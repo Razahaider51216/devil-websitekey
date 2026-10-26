@@ -18,7 +18,7 @@ if (action === "build") {
 } else if (action === "deploy") {
   const built = JSON.parse(readFileSync(config, "utf8"));
   if (built.name !== "devil-websitekey" || built.d1_databases?.[0]?.database_id === "00000000-0000-4000-8000-000000000000") {
-    throw new Error("Run npm run build:cf with CF_D1_DATABASE_ID before deploy:cf.");
+    throw new Error("Run npm run build:cf with a configured Database ID before deploy:cf.");
   }
   run(["node_modules/wrangler/bin/wrangler.js", "d1", "migrations", "apply", "DB", "--remote", "--config", config]);
   run(["node_modules/wrangler/bin/wrangler.js", "deploy", "--config", config]);

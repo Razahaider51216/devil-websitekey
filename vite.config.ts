@@ -1,6 +1,7 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
+import cloudflareConfig from "./cloudflare.config.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { configureToolEnvironment } from "./scripts/tool-environment.mjs";
 import { sites } from "./scripts/vite/sites-vite-plugin";
@@ -11,9 +12,9 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 
 const { d1, r2 } = hostingConfig;
 const directCloudflare = process.env.DEVIL_CLOUDFLARE === "1";
-const directDatabaseId = process.env.CF_D1_DATABASE_ID || "";
+const directDatabaseId = process.env.CF_D1_DATABASE_ID?.trim() || cloudflareConfig.database_id;
 if (directCloudflare && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(directDatabaseId) || directDatabaseId === SITE_CREATOR_PLACEHOLDER_DATABASE_ID)) {
-  throw new Error("Set CF_D1_DATABASE_ID to your Cloudflare D1 Database ID before running build:cf.");
+  throw new Error("Set a valid Database ID in cloudflare.config.json or CF_D1_DATABASE_ID before running build:cf.");
 }
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.

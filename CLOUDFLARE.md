@@ -18,7 +18,9 @@
 | Build command | `npm run build:cf` |
 | Deploy command | `npm run deploy:cf` |
 
-ใน **Build variables** เพิ่ม `NODE_VERSION=24` และ `CF_D1_DATABASE_ID` เป็น Database ID จากข้อ 1 ต้องใส่ก่อน build แรก
+ใน **Build variables** เพิ่ม `NODE_VERSION=24`
+
+Database ID ของ `devil-key-db` ตั้งไว้ใน `cloudflare.config.json` แล้ว จึงไม่ต้องเพิ่ม `CF_D1_DATABASE_ID` เพื่อ build หากใช้ฐานข้อมูลอื่นให้แก้ไฟล์นี้ หรือเพิ่ม `CF_D1_DATABASE_ID` ใน Build variables เพื่อแทนค่า (ตัวแปรใน Runtime ใช้แทนไม่ได้)
 
 การ deploy จะใช้ binding `DB` และลง schema migration ที่ยังไม่เคยลงก่อนเผยแพร่ Worker โดยไม่ลบข้อมูลเดิม Token ที่ Workers Builds ใช้ต้องมีสิทธิ์ Workers Scripts: Edit และ D1: Edit สำหรับบัญชีที่เลือก
 
@@ -48,7 +50,6 @@
 ```powershell
 npm ci
 npx wrangler login
-$env:CF_D1_DATABASE_ID = "ใส่ Database ID จริง"
 npm run build:cf
 npm run deploy:cf
 npx wrangler secret put ADMIN_ACCESS_KEY --config dist/server/wrangler.json

@@ -1,0 +1,69 @@
+# เปิด DEVIL KEY บน Cloudflare Workers
+
+เว็บนี้มี API และฐานข้อมูล ใช้ **Workers + D1**
+
+## 1. สร้างฐานข้อมูล
+
+ใน Cloudflare ไป Storage & Databases → D1 → Create database ตั้งชื่อ `devil-key-db` แล้วคัดลอก Database ID
+
+## 2. เชื่อม GitHub
+
+ไป Workers & Pages → Create application → Import a repository เลือก `Razahaider51216/devil-websitekey` สร้างเป็น **Worker**
+
+| ค่า | กำหนดเป็น |
+| --- | --- |
+| Worker name | `devil-websitekey` |
+| Production branch | `main` |
+| Root directory | `/` |
+| Build command | `npm run build:cf` |
+| Deploy command | `npm run deploy:cf` |
+
+ใน **Build variables** เพิ่ม `NODE_VERSION=24` และ `CF_D1_DATABASE_ID` เป็น Database ID จากข้อ 1 ต้องใส่ก่อน build แรก
+
+การ deploy จะใช้ binding `DB` และลง schema migration ที่ยังไม่เคยลงก่อนเผยแพร่ Worker โดยไม่ลบข้อมูลเดิม Token ที่ Workers Builds ใช้ต้องมีสิทธิ์ Workers Scripts: Edit และ D1: Edit สำหรับบัญชีที่เลือก
+
+ไม่ต้องตั้ง build output directory แบบ static Pages เพราะ deploy command ใช้ Worker และ assets ที่ build แล้ว
+
+## 3. ตั้งค่ารันไทม์
+
+ใน Worker → Settings → Variables and Secrets เพิ่มค่าต่อไปนี้ แล้ว deploy ใหม่:
+
+| ชื่อ | ประเภท | ค่า |
+| --- | --- | --- |
+| `ADMIN_ACCESS_KEY` | Secret | รหัสแอดมินสุ่มอย่างน้อย 24 ตัว |
+| `KEY_SECRET` | Secret | ความลับสุ่มอย่างน้อย 32 ตัว ห้ามเปลี่ยนเมื่อมีคีย์ใช้งาน |
+| `PUBLIC_KEY_HOURS` | Text | `24` หรือจำนวนชั่วโมงที่ต้องการ |
+| `DISCORD_URL` | Text | ลิงก์เชิญ Discord แบบ HTTPS |
+| `YOUTUBE_CHANNEL_URL` | Text | ลิงก์ช่อง DEVIL HUB |
+| `YOUTUBE_VIDEO_URL` | Text | ลิงก์คลิปสำหรับคอมเมนต์และไลค์ |
+| `COMMENT_VIDEO_URL` | Text | ไม่บังคับ ใช้เมื่อแยกคลิปคอมเมนต์ |
+| `LIKE_VIDEO_URL` | Text | ไม่บังคับ ใช้เมื่อแยกคลิปไลค์ |
+
+ใช้ค่ารหัสเดิมจาก `.env` บนเครื่องได้ ไฟล์นี้ไม่ถูกอัปโหลด GitHub บน Cloudflare ให้เปลี่ยนลิงก์ใน Variables and Secrets แล้ว deploy ใหม่
+
+หน้าผู้ใช้คือ `/` หลังบ้านคือ `/admin` ล็อกอินด้วย ADMIN_ACCESS_KEY
+
+## Deploy จากเครื่องด้วย Wrangler
+
+```powershell
+npm ci
+npx wrangler login
+$env:CF_D1_DATABASE_ID = "ใส่ Database ID จริง"
+npm run build:cf
+npm run deploy:cf
+npx wrangler secret put ADMIN_ACCESS_KEY --config dist/server/wrangler.json
+npx wrangler secret put KEY_SECRET --config dist/server/wrangler.json
+```
+
+จากนั้นตั้งลิงก์และอายุคีย์ใน Dashboard ตามข้อ 3
+
+## ตรวจหลัง deploy
+
+- `/api/flow` ต้องตอบ JSON และแสดงรายการขั้นตอน หาก 503 ให้ตรวจ binding DB และ migration
+- `/admin` ต้องเข้าได้เฉพาะเมื่อกรอกรหัสแอดมินถูกต้อง
+- ทำครบ 4 ขั้นตอนจึงรับคีย์ได้; แต่ละขั้นรอ 30 วินาทีหลังกลับเว็บ
+- สร้างคีย์ในหลังบ้านและตรวจ POST `/api/validate` ตาม README
+
+Cloudflare ใช้ฐานข้อมูลใหม่แยกจากเว็บตัวอย่างบน Sites ไม่มีการย้ายคีย์หรือข้อมูลจาก Sites อัตโนมัติ
+
+เอกสารอ้างอิง: [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)

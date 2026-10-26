@@ -14,7 +14,9 @@
     "db:generate": "drizzle-kit generate",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "predev": "node scripts/devil-env.mjs",
-    "prestart": "node scripts/devil-env.mjs"
+    "prestart": "node scripts/devil-env.mjs",
+    "build:cf": "node scripts/cloudflare.mjs build",
+    "deploy:cf": "node scripts/cloudflare.mjs deploy"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

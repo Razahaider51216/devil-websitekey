@@ -2,6 +2,8 @@
 
 เว็บรับคีย์ DEVIL HUB ธีมดำ–แดง พร้อม 4 ขั้นตอนและหลังบ้านแอดมิน
 
+**เปิดบน Cloudflare:** ดู [คู่มือ Cloudflare Workers + D1](CLOUDFLARE.md) มีคำสั่ง build/deploy และรายการ Variables/Secrets ครบ
+
 ## เริ่มใช้งาน
 
 ต้องใช้ Node.js 22.13 ขึ้นไป

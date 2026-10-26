@@ -7,3 +7,10 @@
 @media(max-width:680px){.topbar-inner{gap:10px}.header-actions{gap:8px}.language-switch button{padding:6px;font-size:9px}.header-actions .admin-link{gap:5px;padding:8px 6px;font-size:7px}.brand{font-size:19px}.brand-mark{width:29px}.brand small{letter-spacing:1.1px}.step-action{min-width:65px}.link-settings{margin-top:16px}.link-settings .field-label{font-size:11px}}
 
 .admin-layout,.admin-layout>aside,.key-manager{min-width:0}.key-manager{width:100%;max-width:100%}.table-scroll{max-width:100%}
+
+/* Shared live timer for newly issued and existing keys. */
+.key-countdown { display: flex; flex-direction: column; gap: .4rem; padding: 1rem; margin-top: 1rem; border: 1px solid #424248; background: #161619; border-radius: 8px; }
+.key-countdown > span { display: flex; align-items: center; gap: .4rem; font-size: .75rem; color: #aaaab3; }
+.key-countdown > strong { font-family: monospace; font-size: clamp(.85rem, 2.3vw, 1.2rem); font-variant-numeric: tabular-nums; color: #f1f1f4; }
+.key-countdown-expired > strong, .key-countdown-revoked > strong { color: #f87171; }
+td .key-countdown { padding: .6rem; margin-top: .4rem; min-width: 175px; }

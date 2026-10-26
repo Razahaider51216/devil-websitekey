@@ -1,5 +1,7 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "เวลาคีย์คงเหลือ": "Key time remaining", "คีย์หมดอายุแล้ว": "Key expired",
+  "{hours} ชม. {minutes} นาที {seconds} วินาที": "{hours} hr {minutes} min {seconds} sec",
   "รับคีย์": "Get key", "วิธีใช้งาน": "How to use", "กลับหน้ารับคีย์": "Get access",
   "คัดลอกคีย์": "Copy key", "คัดลอกแล้ว": "Copied", "เลือกคีย์เพื่อคัดลอก": "Select key to copy",
   "ไม่มีวันหมดอายุ": "Never expires", "ทำรายการไม่สำเร็จ": "Request failed",

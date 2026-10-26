@@ -140,7 +140,7 @@ export async function handle(req: Request, path: string[]) {
     if (route === "admin/keys" && req.method === "GET") {
       const rows = await db.select().from(keys).orderBy(desc(keys.createdAt)).limit(200);
       const totals = await db.select({ total: sql<number>`count(*)`, active: sql<number>`sum(case when revoked_at is null and (expires_at is null or expires_at > ${now}) then 1 else 0 end)`, permanent: sql<number>`sum(case when expires_at is null and revoked_at is null then 1 else 0 end)`, revoked: sql<number>`sum(case when revoked_at is not null then 1 else 0 end)` }).from(keys).get();
-      return json({ keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: await config() });
+      return json({ serverNow: now, keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: await config() });
     }
     if (route === "admin/keys" && req.method === "POST") {
       const input = await body(req); const duration: Duration = { kind: input.kind, amount: input.amount };

@@ -1,0 +1,142 @@
+import { env } from "cloudflare:workers";
+import { getDb } from "../db";
+import { flows, steps, keys, limits } from "../db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
+import { expiry, hash, keyFor, safeLink, status, stepState, WAIT_MS, type Duration } from "./domain";
+
+export const vars = () => env as unknown as Record<string, string>;
+export class HttpError extends Error { constructor(public code: number, message: string) { super(message); } }
+export function fail(code: number, message: string): never { throw new HttpError(code, message); }
+export function json(value: unknown, code = 200, extra: Record<string,string> = {}) {
+  return Response.json(value, { status: code, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra } });
+}
+export function config() {
+  const v = vars();
+  return { lifetimeHours: Math.max(1, Math.min(8760, Number(v.PUBLIC_KEY_HOURS) || 24)), steps: [
+    { number: 1, title: "เข้าร่วม Discord", subtitle: "เข้ามาเป็นส่วนหนึ่งของ DEVIL community", service: "DISCORD", url: safeLink(v.DISCORD_URL || "https://discord.gg/fDwPCmpkkh") },
+    { number: 2, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: safeLink(v.YOUTUBE_CHANNEL_URL || "") },
+    { number: 3, title: "คอมเมนต์วิดีโอล่าสุด", subtitle: "แวะไปทักทายกันใต้คลิปวิดีโอ", service: "COMMENT", url: safeLink(v.COMMENT_VIDEO_URL || v.YOUTUBE_VIDEO_URL || "") },
+    { number: 4, title: "กดไลค์วิดีโอ", subtitle: "ส่งกำลังใจให้ DEVIL HUB ด้วยหนึ่งไลค์", service: "LIKE", url: safeLink(v.LIKE_VIDEO_URL || v.YOUTUBE_VIDEO_URL || "") },
+  ] };
+}
+export function sameOrigin(req: Request) {
+  if (req.headers.get("origin") !== new URL(req.url).origin) fail(403, "กรุณาทำรายการจากหน้า DEVIL KEY");
+}
+export async function body(req: Request) {
+  if (!req.headers.get("content-type")?.includes("application/json")) fail(415, "ต้องส่งข้อมูลแบบ JSON");
+  if (Number(req.headers.get("content-length")) > 8192) fail(413, "ข้อมูลยาวเกินไป");
+  const text = await req.text(); if (text.length > 8192) fail(413, "ข้อมูลยาวเกินไป");
+  try { const value = JSON.parse(text); if (!value || Array.isArray(value) || typeof value !== "object") throw 0; return value; } catch { fail(400, "ข้อมูลไม่ถูกต้อง"); }
+}
+export async function rate(req: Request, kind: string, maximum: number) {
+  const now = Date.now(), bucket = Math.floor(now / 60_000);
+  const ip = req.headers.get("cf-connecting-ip") || "local";
+  const id = await hash(`${kind}:${ip}:${bucket}`);
+  const db = getDb();
+  await db.insert(limits).values({ id, hits: 1, expiresAt: (bucket + 2) * 60_000 }).onConflictDoUpdate({ target: limits.id, set: { hits: sql`${limits.hits} + 1` } });
+  const record = await db.select().from(limits).where(eq(limits.id, id)).get();
+  if (record!.hits > maximum) fail(429, "ทำรายการถี่เกินไป กรุณารอสักครู่");
+  if (Math.random() < .02) await db.delete(limits).where(sql`${limits.expiresAt} < ${now}`);
+}
+export async function admin(req: Request) {
+  await rate(req, "admin", 60);
+  const secret = vars().ADMIN_ACCESS_KEY;
+  if (!secret || secret.length < 24) fail(503, "ยังไม่ได้ตั้งรหัสแอดมิน");
+  const provided = req.headers.get("authorization")?.replace(/^Bearer /, "") || "";
+  const a = await hash(secret), b = await hash(provided);
+  let difference = 0; for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  if (difference) fail(401, "รหัสแอดมินไม่ถูกต้อง");
+}
+export async function flow(req: Request, create = false) {
+  const db = getDb(), now = Date.now();
+  const cookie = req.headers.get("cookie")?.match(/(?:^|;\s*)devil_flow=([a-f0-9-]{36})(?:;|$)/)?.[1];
+  let row = cookie ? await db.select().from(flows).where(eq(flows.id, cookie)).get() : undefined;
+  let fresh = false;
+  if (!row || row.expiresAt <= now) {
+    if (!create) fail(401, "เซสชันหมดอายุ กรุณาเริ่มขั้นตอนใหม่");
+    await rate(req, "new-flow", 20);
+    row = { id: crypto.randomUUID(), createdAt: now, expiresAt: now + 86_400_000 };
+    await db.insert(flows).values(row); fresh = true;
+  }
+  return { row, cookie: fresh ? `devil_flow=${row.id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${new URL(req.url).protocol === "https:" ? "; Secure" : ""}` : undefined };
+}
+export async function state(id: string) {
+  const db = getDb(), conf = config(), now = Date.now();
+  const rows = await db.select().from(steps).where(eq(steps.flowId, id));
+  const issued = await db.select().from(keys).where(eq(keys.flowId, id)).get();
+  const result = [];
+  for (const s of conf.steps) {
+    const row = rows.find(r => r.number === s.number);
+    const valid = !!row && row.linkHash === await hash(s.url);
+    const step = valid ? row : { openedAt: null, returnedAt: null };
+    result.push({ ...s, configured: !!s.url, status: stepState(step, now), deadline: step.returnedAt === null ? null : step.returnedAt + WAIT_MS });
+  }
+  return { serverNow: now, lifetimeHours: conf.lifetimeHours, steps: result, canClaim: result.every(s => s.status === "done"), key: issued ? await presentKey(issued) : null };
+}
+export async function presentKey(row: typeof keys.$inferSelect) {
+  return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
+}
+export async function handle(req: Request, path: string[]) {
+  const db = getDb(), now = Date.now(), route = path.join("/");
+  if (route === "flow" && req.method === "GET") {
+    const session = await flow(req, true);
+    return json(await state(session.row.id), 200, session.cookie ? { "Set-Cookie": session.cookie } : {});
+  }
+  if ((route === "flow/open" || route === "flow/return") && req.method === "POST") {
+    sameOrigin(req); const { step } = await body(req), session = await flow(req);
+    if (!Number.isInteger(step) || step < 1 || step > 4) fail(400, "ไม่พบขั้นตอน");
+    const current = await state(session.row.id);
+    if (current.key) fail(409, "เซสชันนี้ได้รับคีย์แล้ว");
+    if (!current.steps.slice(0, step - 1).every(s => s.status === "done")) fail(409, "กรุณาทำขั้นตอนก่อนหน้าให้ครบ");
+    const selected = current.steps[step - 1]; if (!selected.url) fail(503, "แอดมินยังไม่ได้ตั้งลิงก์ขั้นตอนนี้");
+    const id = `${session.row.id}:${step}`;
+    if (route.endsWith("open")) {
+      await db.insert(steps).values({ id, flowId: session.row.id, number: step, openedAt: now, returnedAt: null, linkHash: await hash(selected.url) }).onConflictDoNothing();
+      const existing = await db.select().from(steps).where(eq(steps.id, id)).get();
+      if (existing!.linkHash !== await hash(selected.url)) await db.update(steps).set({ openedAt: now, returnedAt: null, linkHash: await hash(selected.url) }).where(eq(steps.id, id));
+    } else {
+      const existing = await db.select().from(steps).where(eq(steps.id, id)).get();
+      if (!existing?.openedAt || existing.linkHash !== await hash(selected.url)) fail(409, "เปิดลิงก์ขั้นตอนนี้ก่อน");
+      await db.update(steps).set({ returnedAt: sql`coalesce(${steps.returnedAt}, ${now})` }).where(eq(steps.id, id));
+    }
+    return json({ ...await state(session.row.id), openedUrl: selected.url });
+  }
+  if (route === "flow/claim" && req.method === "POST") {
+    sameOrigin(req); await rate(req, "claim", 20); const session = await flow(req);
+    const current = await state(session.row.id);
+    if (current.key) return json(current.key);
+    if (!current.canClaim) fail(409, "กรุณาทำครบ 4 ขั้นตอนและรอคูลดาวน์");
+    const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
+    await db.insert(keys).values({ id, flowId: session.row.id, keyHash: await hash(key), label: "Standard access", source: "steps", createdAt: now, expiresAt: now + current.lifetimeHours * 3_600_000, durationKind: "hours", durationAmount: current.lifetimeHours, revokedAt: null }).onConflictDoNothing();
+    const row = await db.select().from(keys).where(eq(keys.flowId, session.row.id)).get();
+    return json(await presentKey(row!));
+  }
+  if (route === "validate" && req.method === "POST") {
+    await rate(req, "validate", 60); const input = await body(req);
+    if (typeof input.key !== "string" || input.key.length > 100) fail(400, "รูปแบบคีย์ไม่ถูกต้อง");
+    const row = await db.select().from(keys).where(eq(keys.keyHash, await hash(input.key.trim()))).get();
+    return json({ valid: !!row && status(row, now) === "active", status: row ? status(row, now) : "invalid", expiresAt: row?.expiresAt ?? null });
+  }
+  if (route.startsWith("admin")) {
+    await admin(req);
+    if (req.method !== "GET") sameOrigin(req);
+    if (route === "admin/keys" && req.method === "GET") {
+      const rows = await db.select().from(keys).orderBy(desc(keys.createdAt)).limit(200);
+      const totals = await db.select({ total: sql<number>`count(*)`, active: sql<number>`sum(case when revoked_at is null and (expires_at is null or expires_at > ${now}) then 1 else 0 end)`, permanent: sql<number>`sum(case when expires_at is null and revoked_at is null then 1 else 0 end)`, revoked: sql<number>`sum(case when revoked_at is not null then 1 else 0 end)` }).from(keys).get();
+      return json({ keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: config() });
+    }
+    if (route === "admin/keys" && req.method === "POST") {
+      const input = await body(req); const duration: Duration = { kind: input.kind, amount: input.amount };
+      if (!["permanent", "days", "months"].includes(duration.kind)) fail(400, "เลือกรูปแบบอายุคีย์");
+      let ends; try { ends = expiry(now, duration); } catch (e) { fail(400, (e as Error).message); }
+      const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
+      const row = { id, flowId: null, keyHash: await hash(key), label: String(input.label || "Admin key").slice(0, 80), source: "admin", createdAt: now, expiresAt: ends, revokedAt: null, durationKind: duration.kind, durationAmount: duration.kind === "permanent" ? 0 : duration.amount };
+      await db.insert(keys).values(row); return json(await presentKey(row), 201);
+    }
+    if (path[1] === "keys" && path.length === 3 && req.method === "DELETE") {
+      const result = await db.update(keys).set({ revokedAt: now }).where(eq(keys.id, path[2])).returning({ id: keys.id });
+      if (!result.length) fail(404, "ไม่พบคีย์"); return json({ ok: true });
+    }
+  }
+  fail(404, "ไม่พบรายการที่ต้องการ");
+}

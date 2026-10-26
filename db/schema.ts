@@ -15,3 +15,8 @@ export const keys = sqliteTable("access_keys", {
 export const limits = sqliteTable("rate_limits", {
   id: text("id").primaryKey(), hits: integer("hits").notNull(), expiresAt: integer("expires_at").notNull(),
 });
+export const siteSettings = sqliteTable("site_settings", {
+  id: text("id").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
 import { getDb } from "../db";
-import { flows, steps, keys, limits } from "../db/schema";
+import { flows, steps, keys, limits, siteSettings } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { expiry, hash, keyFor, safeLink, status, stepState, WAIT_MS, type Duration } from "./domain";
+import { validateLinks, type Links } from "./settings";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { constructor(public code: number, message: string) { super(message); } }
@@ -10,13 +11,19 @@ export function fail(code: number, message: string): never { throw new HttpError
 export function json(value: unknown, code = 200, extra: Record<string,string> = {}) {
   return Response.json(value, { status: code, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra } });
 }
-export function config() {
+export async function config() {
   const v = vars();
-  return { lifetimeHours: Math.max(1, Math.min(8760, Number(v.PUBLIC_KEY_HOURS) || 24)), steps: [
-    { number: 1, title: "เข้าร่วม Discord", subtitle: "เข้ามาเป็นส่วนหนึ่งของ DEVIL community", service: "DISCORD", url: safeLink(v.DISCORD_URL || "https://discord.gg/fDwPCmpkkh") },
-    { number: 2, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: safeLink(v.YOUTUBE_CHANNEL_URL || "") },
-    { number: 3, title: "คอมเมนต์วิดีโอล่าสุด", subtitle: "แวะไปทักทายกันใต้คลิปวิดีโอ", service: "COMMENT", url: safeLink(v.COMMENT_VIDEO_URL || v.YOUTUBE_VIDEO_URL || "") },
-    { number: 4, title: "กดไลค์วิดีโอ", subtitle: "ส่งกำลังใจให้ DEVIL HUB ด้วยหนึ่งไลค์", service: "LIKE", url: safeLink(v.LIKE_VIDEO_URL || v.YOUTUBE_VIDEO_URL || "") },
+  const stored = await getDb().select().from(siteSettings).where(eq(siteSettings.id, "links")).get();
+  const links: Links = stored ? validateLinks(JSON.parse(stored.value)) : {
+    discordUrl: safeLink(v.DISCORD_URL || "https://discord.gg/fDwPCmpkkh"),
+    channelUrl: safeLink(v.YOUTUBE_CHANNEL_URL || ""), videoUrl: safeLink(v.YOUTUBE_VIDEO_URL || ""),
+    commentUrl: safeLink(v.COMMENT_VIDEO_URL || ""), likeUrl: safeLink(v.LIKE_VIDEO_URL || ""),
+  };
+  return { links, updatedAt: stored?.updatedAt ?? null, lifetimeHours: Math.max(1, Math.min(8760, Number(v.PUBLIC_KEY_HOURS) || 24)), steps: [
+    { number: 1, title: "เข้าร่วม Discord", subtitle: "เข้ามาเป็นส่วนหนึ่งของ DEVIL community", service: "DISCORD", url: links.discordUrl },
+    { number: 2, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: links.channelUrl },
+    { number: 3, title: "คอมเมนต์วิดีโอล่าสุด", subtitle: "แวะไปทักทายกันใต้คลิปวิดีโอ", service: "COMMENT", url: links.commentUrl || links.videoUrl },
+    { number: 4, title: "กดไลค์วิดีโอ", subtitle: "ส่งกำลังใจให้ DEVIL HUB ด้วยหนึ่งไลค์", service: "LIKE", url: links.likeUrl || links.videoUrl },
   ] };
 }
 export function sameOrigin(req: Request) {
@@ -24,8 +31,8 @@ export function sameOrigin(req: Request) {
 }
 export async function body(req: Request) {
   if (!req.headers.get("content-type")?.includes("application/json")) fail(415, "ต้องส่งข้อมูลแบบ JSON");
-  if (Number(req.headers.get("content-length")) > 8192) fail(413, "ข้อมูลยาวเกินไป");
-  const text = await req.text(); if (text.length > 8192) fail(413, "ข้อมูลยาวเกินไป");
+  if (Number(req.headers.get("content-length")) > 16384) fail(413, "ข้อมูลยาวเกินไป");
+  const text = await req.text(); if (text.length > 16384) fail(413, "ข้อมูลยาวเกินไป");
   try { const value = JSON.parse(text); if (!value || Array.isArray(value) || typeof value !== "object") throw 0; return value; } catch { fail(400, "ข้อมูลไม่ถูกต้อง"); }
 }
 export async function rate(req: Request, kind: string, maximum: number) {
@@ -41,7 +48,8 @@ export async function rate(req: Request, kind: string, maximum: number) {
 export async function admin(req: Request) {
   await rate(req, "admin", 60);
   const secret = vars().ADMIN_ACCESS_KEY;
-  if (!secret || secret.length < 24) fail(503, "ยังไม่ได้ตั้งรหัสแอดมิน");
+  if (!secret) fail(503, "ยังไม่ได้ตั้งรหัสแอดมิน");
+  if (secret.length < 24) fail(503, "รหัสแอดมินต้องยาวอย่างน้อย 24 ตัวอักษร");
   const provided = req.headers.get("authorization")?.replace(/^Bearer /, "") || "";
   const a = await hash(secret), b = await hash(provided);
   let difference = 0; for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -61,7 +69,7 @@ export async function flow(req: Request, create = false) {
   return { row, cookie: fresh ? `devil_flow=${row.id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${new URL(req.url).protocol === "https:" ? "; Secure" : ""}` : undefined };
 }
 export async function state(id: string) {
-  const db = getDb(), conf = config(), now = Date.now();
+  const db = getDb(), conf = await config(), now = Date.now();
   const rows = await db.select().from(steps).where(eq(steps.flowId, id));
   const issued = await db.select().from(keys).where(eq(keys.flowId, id)).get();
   const result = [];
@@ -120,10 +128,19 @@ export async function handle(req: Request, path: string[]) {
   if (route.startsWith("admin")) {
     await admin(req);
     if (req.method !== "GET") sameOrigin(req);
+    if (route === "admin/settings" && req.method === "GET") return json(await config());
+    if (route === "admin/settings" && req.method === "POST") {
+      const input = await body(req);
+      let links: Links;
+      try { links = validateLinks(input.links); } catch (error) { fail(400, (error as Error).message); }
+      await db.insert(siteSettings).values({ id: "links", value: JSON.stringify(links), updatedAt: now })
+        .onConflictDoUpdate({ target: siteSettings.id, set: { value: JSON.stringify(links), updatedAt: now } });
+      return json(await config());
+    }
     if (route === "admin/keys" && req.method === "GET") {
       const rows = await db.select().from(keys).orderBy(desc(keys.createdAt)).limit(200);
       const totals = await db.select({ total: sql<number>`count(*)`, active: sql<number>`sum(case when revoked_at is null and (expires_at is null or expires_at > ${now}) then 1 else 0 end)`, permanent: sql<number>`sum(case when expires_at is null and revoked_at is null then 1 else 0 end)`, revoked: sql<number>`sum(case when revoked_at is not null then 1 else 0 end)` }).from(keys).get();
-      return json({ keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: config() });
+      return json({ keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: await config() });
     }
     if (route === "admin/keys" && req.method === "POST") {
       const input = await body(req); const duration: Duration = { kind: input.kind, amount: input.amount };

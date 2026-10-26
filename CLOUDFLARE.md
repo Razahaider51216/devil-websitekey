@@ -35,13 +35,14 @@ Database ID ของ `devil-key-db` ตั้งไว้ใน `cloudflare.con
 | `ADMIN_ACCESS_KEY` | Secret | รหัสแอดมินสุ่มอย่างน้อย 24 ตัว |
 | `KEY_SECRET` | Secret | ความลับสุ่มอย่างน้อย 32 ตัว ห้ามเปลี่ยนเมื่อมีคีย์ใช้งาน |
 | `PUBLIC_KEY_HOURS` | Text | `24` หรือจำนวนชั่วโมงที่ต้องการ |
-| `DISCORD_URL` | Text | ลิงก์เชิญ Discord แบบ HTTPS |
-| `YOUTUBE_CHANNEL_URL` | Text | ลิงก์ช่อง DEVIL HUB |
-| `YOUTUBE_VIDEO_URL` | Text | ลิงก์คลิปสำหรับคอมเมนต์และไลค์ |
-| `COMMENT_VIDEO_URL` | Text | ไม่บังคับ ใช้เมื่อแยกคลิปคอมเมนต์ |
-| `LIKE_VIDEO_URL` | Text | ไม่บังคับ ใช้เมื่อแยกคลิปไลค์ |
 
-ใช้ค่ารหัสเดิมจาก `.env` บนเครื่องได้ ไฟล์นี้ไม่ถูกอัปโหลด GitHub บน Cloudflare ให้เปลี่ยนลิงก์ใน Variables and Secrets แล้ว deploy ใหม่
+ใช้ค่ารหัสเดิมจาก `.env` บนเครื่องได้ ไฟล์นี้ไม่ถูกอัปโหลด GitHub
+
+ตั้งลิงก์ Discord/YouTube ในหน้า `/admin` ส่วน “ตั้งค่าลิงก์ภารกิจ” แล้วกด “บันทึกลิงก์” ได้ทันที ไม่ต้อง deploy ใหม่ ช่องวิดีโอล่าสุดใช้สำหรับคอมเมนต์และไลค์ หรือแยกคลิปแต่ละขั้นตอนในช่องไม่บังคับได้
+
+ตัวแปรลิงก์เก่า DISCORD_URL, YOUTUBE_CHANNEL_URL, YOUTUBE_VIDEO_URL, COMMENT_VIDEO_URL และ LIKE_VIDEO_URL ยังใช้เป็นค่าเริ่มต้นได้จนกดบันทึกหลังบ้านครั้งแรก หลังจากนั้นใช้ค่าที่เก็บใน D1
+
+เมื่ออัปเดตจากเวอร์ชันก่อน `npm run deploy:cf` จะลง migration `0001_calm_micromax.sql` เพื่อเพิ่มตารางตั้งค่า โดยไม่ลบคีย์เดิม มีปุ่ม TH / EN บนหัวเว็บสำหรับเลือกภาษาและจำค่าบน browser
 
 หน้าผู้ใช้คือ `/` หลังบ้านคือ `/admin` ล็อกอินด้วย ADMIN_ACCESS_KEY
 

@@ -51,3 +51,33 @@ An executor must use its HTTP **request** function for this POST, not HttpGet.
 The bootstrap and all nested runtime dependencies must be adapted and tested
 before changing the existing main loader. Merely uploading a top-level script
 does not hide nested URLs or erase past public GitHub history.
+
+## Main loader delivery
+
+The main runtime uses an immutable release manifest covering all 12 maps and
+their dependencies, including branding images and vendored libraries. It is
+separate from individually uploaded drafts: activating a draft does not silently
+change a dependency whose size/checksum is pinned by another file.
+
+`POST /api/runtime/session` accepts the same key/HWID JSON as `/api/validate`.
+After verification it issues a signed delivery ticket pinned to the active
+release. The ticket lasts at most 24 hours and never beyond the key's expiry.
+Every file request rechecks the key's current status and stored device binding.
+Tickets are bearer credentials: do not share private download URLs. Client-side
+HWIDs and downloaded code cannot provide absolute protection against extraction.
+
+The Git bootstrap retains the existing blue key panel. It downloads the original
+main loader and scopes compilation so own-repository dependency URLs point to
+`/api/runtime/files/<ticket>/<original-commit>/<original-path>`. Bytes downloaded
+from R2 remain identical; existing size/checksum tests still see the originals.
+The real `game` instance and executor globals are preserved. Queued re-execution
+continues to use the public Git `main/loader?v=vm-1` URL, so a rejoin does not
+reuse an expired private ticket.
+
+Privileged imports run locally with `node scripts/import-runtime.mjs <absolute
+runtime-manifest.json>` and verify every uploaded content hash by reading it
+back. Add `--activate` only after the complete upload verifies. Credentials are
+read from the ignored `.env.cloudflare.local`; account, bucket and database are
+explicitly selected. The importer changes only the `runtime:active` setting;
+it never changes existing keys, devices or mission progress. A previous manifest
+can be activated to roll back. The admin vault shows the active runtime release.

@@ -9,6 +9,7 @@ import { readJson, cookieValue, requireOrigin } from "./security";
 import { discordRequired, requireDiscord, requireDiscordAdmin, flowOwner, flowOwnerCookie, handleDiscord } from "./discord-auth";
 import { plans, validPlan, planFor, type PlanId } from "./plans";
 import { handleScripts } from "./script-storage";
+import { handleRuntime } from "./runtime-storage";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -107,6 +108,12 @@ export async function presentKey(row: typeof keys.$inferSelect) {
 export async function handle(req: Request, path: string[]): Promise<Response> {
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   const db = getDb(), now = Date.now(), route = path.join("/");
+  if (path[0] === "runtime" || route === "admin/runtime") {
+    return handleRuntime(req, path, { admin, rate, validate: (original, input) => {
+      const headers = new Headers(original.headers); headers.set("Content-Type", "application/json"); headers.delete("Content-Length");
+      return handle(new Request(original, { method: "POST", headers, body: JSON.stringify(input) }), ["validate"]);
+    } });
+  }
   if (path[0] === "scripts" || (path[0] === "admin" && path[1] === "scripts")) {
     return handleScripts(req, path, { admin, rate, validate: (original, input) => handle(new Request(original, {
       method: "POST", headers: new Headers(original.headers), body: JSON.stringify(input),

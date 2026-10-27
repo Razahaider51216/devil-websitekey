@@ -260,4 +260,40 @@ test('server security integration',async t=>{
     await adminUser.call('auth/logout','POST',{});assert.equal((await adminUser.call('admin/keys','GET',undefined,forged)).status,401);
     await adminUser.login();clock+=28_800_001;assert.equal((await adminUser.call('admin/keys')).status,401);
   });
+
+  await t.test('private main delivery checks key/device, immutable manifest, all file hashes and replay expiry',async()=>{
+    await reset();const b=new Browser();await b.login();const data=new Map();
+    const object=(key)=>data.has(key)?{size:data.get(key).length,arrayBuffer:async()=>data.get(key).slice().buffer}:null;
+    env.SCRIPT_FILES={get:async key=>object(key),head:async key=>object(key)};
+    const {createHash}=await import('node:crypto');const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+    const {blobKey,manifestKey}=await import('../lib/runtime-storage.ts');
+    const source=new TextEncoder().encode('return "unchanged runtime"');let checksum=0;for(const byte of source)checksum=(checksum*33+byte)>>>0;
+    const ref='a'.repeat(40),file=ref+'/loader',release='runtime-fixture-1';
+    const manifest={release,root:file,maps:12,files:{[file]:{sha256:sha(source),bytes:source.length,checksum}}};
+    const manifestBytes=new TextEncoder().encode(JSON.stringify(manifest));const pointer={release,sha256:sha(manifestBytes)};
+    data.set(manifestKey(release),manifestBytes);
+    const created=(await b.call('admin/keys','POST',{kind:'permanent',amount:0,label:'runtime'})).data;
+    const login={key:created.key,hwid:'executor:runtime-device'};
+    assert.equal((await b.call('runtime/session','POST',{...login,key:'invalid'})).status,403);
+    assert.equal((await b.call('runtime/session','POST',login)).status,503);
+    assert.equal((await b.call('admin/runtime','POST',pointer)).status,409,'incomplete dependency upload cannot be published');
+    data.set(blobKey(sha(source)),source);
+    assert.equal((await b.call('admin/runtime','POST',pointer)).status,200);
+    const stranger=new Browser();assert.equal((await stranger.call('admin/runtime')).status,401);
+    const result=await b.call('runtime/session','POST',login);assert.equal(result.status,200);assert.equal(result.data.bytes,source.length);
+    assert.equal((await b.call('runtime/session','POST',{...login,hwid:'executor:wrong-device'})).status,403);
+    async function fetchFile(url) {
+      const request=new Request(url,{headers:{'cf-connecting-ip':b.ip}});const path=new URL(url).pathname.slice(5).split('/');
+      try{return await handle(request,path);}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
+    }
+    const response=await fetchFile(result.data.entry);assert.equal(response.status,200);assert.equal(await response.text(),'return "unchanged runtime"');
+    assert.equal(response.headers.get('cache-control'),'private, no-store');
+    assert.equal((await fetchFile(result.data.prefix+ref+'/not-published.lua')).status,404);
+    assert.equal((await fetchFile(result.data.entry.replace('/files/','/files/x'))).status,403);
+    data.set(blobKey(sha(source)),new TextEncoder().encode('tampered'));assert.equal((await fetchFile(result.data.entry)).status,503);data.set(blobKey(sha(source)),source);
+    data.set(manifestKey(release),new TextEncoder().encode('{}'));assert.equal((await fetchFile(result.data.entry)).status,503);data.set(manifestKey(release),manifestBytes);
+    const now=clock;clock+=86_400_001;assert.equal((await fetchFile(result.data.entry)).status,403);clock=now;
+    await b.call('admin/keys/'+created.id,'DELETE',{});assert.equal((await fetchFile(result.data.entry)).status,403);
+    delete env.SCRIPT_FILES;
+  });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

@@ -9,12 +9,16 @@ export function ScriptManager() {
   const { language } = useLanguage();
   const text = (th: string, en: string) => language === "th" ? th : en;
   const [catalog, setCatalog] = useState<{ configured: boolean; scripts: ScriptRecord[] } | null>(null);
+  const [runtime, setRuntime] = useState<{ active: { release: string } | null; files: number } | null>(null);
   const [slug, setSlug] = useState(""), [files, setFiles] = useState<File[]>([]);
   const [selected, setSelected] = useState(""), [revisions, setRevisions] = useState<ScriptRevision[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const headers = {};
-  async function load() { const result = await api("admin/scripts", { headers }); setCatalog(result); return result; }
+  async function load() {
+    const [result, delivery] = await Promise.all([api("admin/scripts", { headers }), api("admin/runtime", { headers })]);
+    setCatalog(result); setRuntime(delivery); return result;
+  }
   async function run(action: () => Promise<void>) {
     setBusy(true); setError(""); setNotice("");
     try { await action(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -47,6 +51,7 @@ export function ScriptManager() {
   return <section className="script-manager key-manager">
     <div className="manager-top"><h2><Code2 size={20}/> SCRIPT VAULT</h2><button type="button" className="quiet-button" disabled={busy} onClick={() => run(async () => { await load(); })}><RefreshCw size={15}/> {text("โหลดรายการ", "Load scripts")}</button></div>
     <p className="script-description">{text("เก็บ Lua แบบส่วนตัว • ตรวจคีย์และ HWID ก่อนดาวน์โหลด • แยกเวอร์ชันและย้อนกลับได้", "Private Lua storage • Key and HWID checked before download • Version history and rollback")}</p>
+    {runtime && <p className="script-description"><ShieldCheck size={14}/> {runtime.active ? `${runtime.active.release} · ${runtime.files} files` : text("ยังไม่มีชุดไฟล์สำหรับตัวรันหลักที่เผยแพร่", "No main runtime release published")}</p>}
     {error && <div className="notice error" role="alert">{error}</div>}
     {notice && <div className="notice" role="status">{notice}</div>}
     {catalog && !catalog.configured && <div className="notice error">{text("ยังไม่ได้เชื่อม R2 binding SCRIPT_FILES", "R2 binding SCRIPT_FILES is not connected")}</div>}

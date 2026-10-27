@@ -43,7 +43,6 @@ Database ID ของ `devil-key-db` ตั้งไว้ใน `cloudflare.con
 
 | ชื่อ | ประเภท | ค่า |
 | --- | --- | --- |
-| `ADMIN_ACCESS_KEY` | Secret | รหัสแอดมินสุ่มอย่างน้อย 24 ตัว |
 | `KEY_SECRET` | Secret | ความลับสุ่มอย่างน้อย 32 ตัว ห้ามเปลี่ยนเมื่อมีคีย์ใช้งาน |
 | `PUBLIC_KEY_HOURS` | Text | `24` หรือจำนวนชั่วโมงที่ต้องการ |
 
@@ -55,7 +54,7 @@ Database ID ของ `devil-key-db` ตั้งไว้ใน `cloudflare.con
 
 เมื่ออัปเดตจากเวอร์ชันก่อน `npm run deploy:cf` จะลง migration `0001_calm_micromax.sql` เพื่อเพิ่มตารางตั้งค่า โดยไม่ลบคีย์เดิม มีปุ่ม TH / EN บนหัวเว็บสำหรับเลือกภาษาและจำค่าบน browser
 
-หน้าผู้ใช้คือ `/` หลังบ้านคือ `/admin` ล็อกอินด้วย ADMIN_ACCESS_KEY
+Admin page: `/admin`. Sign in with Discord using an ID listed in `DISCORD_ADMIN_USER_IDS`; no admin password is required.
 
 คีย์เลือกคัดลอกได้ทั้งคีย์ธรรมดาและโค้ดรันพร้อม `script_key` โดยเป็นคีย์เดียวกัน เมื่อใช้สคริปต์ครั้งแรก เซิร์ฟเวอร์ผูกคีย์กับค่าแฮช HWID ที่ตัวรันส่งมา เครื่องเดิมใช้ต่อได้จนหมดอายุ แต่ HWID อื่นถูกปฏิเสธ คีย์เก่าที่ไม่เคยผูกเครื่องจะผูกเมื่อใช้ครั้งแรกหลังอัปเดต ต้องรัน loader เวอร์ชันใหม่เพื่อส่ง HWID ตัวระบุนี้ขึ้นกับ executor/การติดตั้ง Roblox และไม่ใช่การรับรองตัวตนเครื่องจากฮาร์ดแวร์
 
@@ -76,7 +75,6 @@ npm ci
 npx wrangler login
 npm run build:cf
 npm run deploy:cf
-npx wrangler secret put ADMIN_ACCESS_KEY --config dist/server/wrangler.json
 npx wrangler secret put KEY_SECRET --config dist/server/wrangler.json
 ```
 

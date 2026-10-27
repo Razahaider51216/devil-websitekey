@@ -5,7 +5,7 @@ import { api, CopyButton, date } from "../components";
 import { useLanguage } from "../language";
 import type { ScriptRecord, ScriptRevision } from "../../lib/script-storage";
 
-export function ScriptManager({ token }: { token: string }) {
+export function ScriptManager() {
   const { language } = useLanguage();
   const text = (th: string, en: string) => language === "th" ? th : en;
   const [catalog, setCatalog] = useState<{ configured: boolean; scripts: ScriptRecord[] } | null>(null);
@@ -13,7 +13,7 @@ export function ScriptManager({ token }: { token: string }) {
   const [selected, setSelected] = useState(""), [revisions, setRevisions] = useState<ScriptRevision[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = {};
   async function load() { const result = await api("admin/scripts", { headers }); setCatalog(result); return result; }
   async function run(action: () => Promise<void>) {
     setBusy(true); setError(""); setNotice("");

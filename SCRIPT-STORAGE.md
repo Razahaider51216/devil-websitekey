@@ -19,7 +19,7 @@ be extracted by that client; this controls distribution, not absolute secrecy.
 
 ## Admin workflow
 
-Open `/admin`, sign in with an allowed Discord ID and the admin password, then
+Open `/admin`, sign in with a Discord ID listed in `DISCORD_ADMIN_USER_IDS`, then
 scroll to **SCRIPT VAULT**. Load the catalog, select one or multiple `.lua` files,
 and upload. Each file can be at most 8 MiB of UTF-8 text. Script IDs use lowercase
 letters, numbers and hyphens. A multi-file upload derives IDs from filenames.

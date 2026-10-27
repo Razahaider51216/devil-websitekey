@@ -56,13 +56,6 @@ export async function rate(req: Request, kind: string, maximum: number) {
 export async function admin(req: Request) {
   await rate(req, "admin", 60);
   await requireDiscordAdmin(req);
-  const secret = vars().ADMIN_ACCESS_KEY;
-  if (!secret) fail(503, "ยังไม่ได้ตั้งรหัสแอดมิน");
-  if (secret.length < 24) fail(503, "รหัสแอดมินต้องยาวอย่างน้อย 24 ตัวอักษร");
-  const provided = req.headers.get("authorization")?.replace(/^Bearer /, "") || "";
-  const a = await hash(secret), b = await hash(provided);
-  let difference = 0; for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  if (difference) fail(401, "รหัสแอดมินไม่ถูกต้อง");
 }
 export async function flow(req: Request, create = false, selectedPlan?: PlanId) {
   const user = await requireDiscord(req);

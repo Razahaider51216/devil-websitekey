@@ -8,7 +8,7 @@ import { plans, planFor, type PlanId } from "../../lib/plans";
 
 type ModeConfiguration = { plan: PlanId; links: Links; updatedAt: number | null };
 type Configuration = { links: Links; updatedAt: number | null; modes: ModeConfiguration[] };
-export function LinkSettings({ configuration, token, onSaved }: { configuration: Configuration; token: string; onSaved: (value: Configuration) => void }) {
+export function LinkSettings({ configuration, onSaved }: { configuration: Configuration; onSaved: (value: Configuration) => void }) {
   const { t, language } = useLanguage();
   const [mode, setMode] = useState<PlanId>("24h");
   const active = configuration.modes.find(item => item.plan === mode)!;
@@ -25,7 +25,7 @@ export function LinkSettings({ configuration, token, onSaved }: { configuration:
   async function save(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setSaved(false);
     try {
-      const result = await api("admin/settings", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ links, plan: mode }) });
+      const result = await api("admin/settings", { method: "POST", body: JSON.stringify({ links, plan: mode }) });
       onSaved(result); setLinks(result.modes.find((item: ModeConfiguration) => item.plan === mode).links); setSaved(true);
     } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }

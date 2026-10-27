@@ -28,13 +28,13 @@ Production uses **Cloudflare D1 directly** through the `DB` Worker binding. This
 ต้องใช้ Node.js 22.13 ขึ้นไป
 
 1. รัน `npm ci`
-2. คัดลอก `.env.example` เป็น `.env` แล้วกำหนดค่า รหัสแอดมินสุ่มอย่างน้อย 24 ตัว และ KEY_SECRET อย่างน้อย 32 ตัว
-3. ตั้ง ADMIN_ACCESS_KEY และ KEY_SECRET แล้วแก้ลิงก์ภายหลังในหน้า `/admin` ได้ (ค่าลิงก์ใน `.env` เป็นค่าเริ่มต้นก่อนบันทึกหลังบ้านครั้งแรก)
+2. Copy `.env.example` to `.env`, set KEY_SECRET (at least 32 characters), configure Discord OAuth and DISCORD_ADMIN_USER_IDS.
+3. Configure KEY_SECRET and DISCORD_ADMIN_USER_IDS. Mission links can then be edited in `/admin`.
 4. รัน `npm run build`
 5. ลง migration ฐานข้อมูล local: `node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --local --config dist/server/wrangler.json --persist-to .wrangler/state`
 6. รัน `npm start -- --port 5184` แล้วเปิด http://127.0.0.1:5184
 
-หลังบ้านอยู่ `/admin` ต้องล็อกอิน Discord ด้วย User ID ที่อยู่ใน `DISCORD_ADMIN_USER_IDS` แล้วใส่ `ADMIN_ACCESS_KEY` อีกครั้ง ผู้ใช้ทั่วไปไม่เห็นเมนู ADMIN และ API ปฏิเสธสิทธิ์ด้วย ฐานข้อมูล production ใช้ D1; local ใช้ D1
+Admin access at `/admin` requires a valid Discord session whose user ID is listed in DISCORD_ADMIN_USER_IDS. No separate admin password is required. Every admin API checks the same server-side allowlist.
 
 ## Discord Login และสิทธิ์แอดมิน
 
@@ -44,10 +44,9 @@ Production uses **Cloudflare D1 directly** through the `DB` Worker binding. This
 - `DISCORD_CLIENT_SECRET`: Client Secret (ชนิด Secret)
 - `DISCORD_ADMIN_USER_IDS`: Discord User ID ของแอดมิน คั่นหลายคนด้วยจุลภาค เช่น `123456789012345678,223456789012345678` ห้ามใส่ชื่อผู้ใช้ ไม่มี ID ที่ตรงหมายถึงไม่มีสิทธิ์หลังบ้าน
 - `TURNSTILE_SITE_KEY` และ `TURNSTILE_SECRET_KEY`: Widget ที่อนุญาต hostname ของเว็บจริง
-- `ADMIN_ACCESS_KEY`: รหัสผ่านแอดมินเดิม ไม่ต้องเปลี่ยน
 - `KEY_SECRET`: เก็บค่าเดิมไว้ เพื่อให้คีย์และ HWID เดิมยังใช้ได้
 
-ตั้ง Discord OAuth2 Redirect URI เป็น `https://devil-websitekey.waeeccvv.workers.dev/api/auth/discord/callback` ใช้ scope `identify` เท่านั้น ไม่มีการขอสิทธิ์บอทหรือจัดการเซิร์ฟเวอร์
+ตั้ง Discord OAuth2 Redirect URI เป็น `https://devil-hub.dev/api/auth/discord/callback` ใช้ scope `identify` เท่านั้น ไม่มีการขอสิทธิ์บอทหรือจัดการเซิร์ฟเวอร์
 
 production เปิด `DISCORD_LOGIN_REQUIRED=1` และ `REQUIRE_TURNSTILE=1` ผ่าน `cloudflare.config.json` หากตั้งค่าไม่ครบจะปฏิเสธการรับคีย์ ผู้ใช้ต้องยืนยัน Turnstile ก่อนเริ่ม OAuth และทำขั้นตอนรับคีย์บนเซสชันที่ผูกกับบัญชีตัวเอง คุกกี้ล็อกอินหมดอายุใน 8 ชั่วโมง ออกจากระบบจะเพิกถอนเซสชันบนเซิร์ฟเวอร์ด้วย
 
@@ -58,12 +57,11 @@ production เปิด `DISCORD_LOGIN_REQUIRED=1` และ `REQUIRE_TURNSTILE=
 ## การตั้งค่า
 
 - PUBLIC_KEY_HOURS: ค่าเริ่มต้นสำหรับระบบเก่าเท่านั้น v1.0.0 ใช้อายุคงที่ 6 / 12 / 24 ชั่วโมงตามโหมด เริ่มนับเมื่อรับคีย์
-- ADMIN_ACCESS_KEY: รหัสผ่านหลังบ้าน เปลี่ยนแล้วรหัสเดิมเข้าไม่ได้
 - KEY_SECRET: ความลับสำหรับสร้างคีย์ ห้ามเปลี่ยนขณะมีคีย์ใช้งาน เพราะคีย์ที่แสดงจะเปลี่ยนและไม่ตรง hash เดิม
 - ลิงก์แก้ได้ในหน้า `/admin` ส่วน “ตั้งค่าลิงก์ภารกิจ” บันทึกลง D1 และมีผลทันที ไม่ต้อง restart หรือ deploy
 - ตั้ง Discord, ช่อง YouTube, คลิปล่าสุด และแยกคลิปคอมเมนต์/ไลค์ได้ ช่องคลิปแยกที่เว้นว่างจะใช้คลิปล่าสุด
 - ก่อนบันทึกหลังบ้านครั้งแรก ระบบอ่านค่าเริ่มต้นจาก `.env` / runtime variables หลังบันทึกแล้วค่าหลังบ้านมีสิทธิ์เหนือกว่า รวมถึงการล้างช่องลิงก์ให้ว่าง
-- ADMIN_ACCESS_KEY และ KEY_SECRET ยังตั้งใน runtime secrets เท่านั้น ไม่มีการแสดงหรือแก้ไขผ่านฟอร์มลิงก์
+KEY_SECRET remains a runtime secret; retain its existing value. ADMIN_ACCESS_KEY is no longer used and may be removed.
 - การเปลี่ยนลิงก์ทำให้ขั้นตอนที่ใช้ลิงก์เก่าต้องทำใหม่ แต่ไม่กระทบคีย์ที่ออกไปแล้ว
 - ขั้นตอนที่ยังไม่มีลิงก์จะไม่เปิดให้ทำ
 

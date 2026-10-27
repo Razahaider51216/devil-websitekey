@@ -17,7 +17,7 @@ registerHooks({resolve(specifier,context,next){
   return next(specifier,context);
 }});
 const schema=await import('../db/schema.ts');
-const env=globalThis.__securityEnv={KEY_SECRET:'integration-only-'.repeat(3),ADMIN_ACCESS_KEY:'admin-password-only-'.repeat(2),DISCORD_LOGIN_REQUIRED:'1',REQUIRE_TURNSTILE:'1',DISCORD_CLIENT_ID:'123456789012345678',DISCORD_CLIENT_SECRET:'test-only',TURNSTILE_SITE_KEY:'test-site',TURNSTILE_SECRET_KEY:'test-secret',DISCORD_ADMIN_USER_IDS:'123456789012345678',PUBLIC_KEY_HOURS:'24',DISCORD_URL:'https://discord.gg/test',YOUTUBE_CHANNEL_URL:'https://youtube.com/@test',YOUTUBE_VIDEO_URL:'https://youtube.com/watch?v=test'};
+const env=globalThis.__securityEnv={KEY_SECRET:'integration-only-'.repeat(3),DISCORD_LOGIN_REQUIRED:'1',REQUIRE_TURNSTILE:'1',DISCORD_CLIENT_ID:'123456789012345678',DISCORD_CLIENT_SECRET:'test-only',TURNSTILE_SITE_KEY:'test-site',TURNSTILE_SECRET_KEY:'test-secret',DISCORD_ADMIN_USER_IDS:'123456789012345678',PUBLIC_KEY_HOURS:'24',DISCORD_URL:'https://discord.gg/test',YOUTUBE_CHANNEL_URL:'https://youtube.com/@test',YOUTUBE_VIDEO_URL:'https://youtube.com/watch?v=test'};
 const {handle}=await import('../lib/server.ts');
 const {seal}=await import('../lib/security.ts');
 const {hash,keyFor}=await import('../lib/domain.ts');
@@ -54,10 +54,10 @@ class Browser {
   }
 }
 test('server security integration',async t=>{
-  await t.test('Discord required; captcha, state, replay, admin ID and password enforced',async()=>{
+  await t.test('Discord required; captcha, state, replay and admin ID enforced without a password',async()=>{
     await reset();const b=new Browser();
     assert.equal((await b.call('flow')).status,401);
-    assert.equal((await b.call('admin/keys','GET',undefined,{authorization:'Bearer '+env.ADMIN_ACCESS_KEY})).status,401);
+    assert.equal((await b.call('admin/keys','GET',undefined,{})).status,401);
     const s=await b.call('auth/session');challenge=s.data.challenge;
     assert.equal((await b.call('auth/discord/start','POST',{token:'bad'})).status,400);
     captchaAction='devil-key-claim';assert.equal((await b.call('auth/discord/start','POST',{token:'valid-token'})).status,400);
@@ -73,10 +73,10 @@ test('server security integration',async t=>{
     b.jar.set('__Host-devil_oauth',oauthCookie);
     assert.match((await b.call('auth/discord/callback?state='+state+'&code=code')).headers.get('location'),/^\/\?login=failed&reason=LOGIN_[A-Z_]+$/);
     assert.equal(exchanges,exchangeCount);
-    assert.equal((await b.call('admin/keys')).status,401);
-    assert.equal((await b.call('admin/keys','GET',undefined,{authorization:'Bearer '+env.ADMIN_ACCESS_KEY})).status,200);
+    assert.equal((await b.call('admin/keys')).status,200);
+    assert.equal((await b.call('admin/keys','GET',undefined,{})).status,200);
     const other=new Browser();await other.login('223456789012345678');assert.equal((await other.call('auth/session')).data.user.isAdmin,false);
-    assert.equal((await other.call('admin/keys','GET',undefined,{authorization:'Bearer '+env.ADMIN_ACCESS_KEY})).status,403);
+    assert.equal((await other.call('admin/keys','GET',undefined,{})).status,403);
     const replay=await b.call('auth/discord/callback?state='+state+'&code=code');assert.match(replay.headers.get('location'),/^\/\?login=failed&reason=LOGIN_[A-Z_]+$/);
     const stolen=new Browser();stolen.jar=new Map(b.jar);await b.call('auth/logout','POST',{});assert.equal((await stolen.call('flow')).status,401);
   });
@@ -144,7 +144,7 @@ test('server security integration',async t=>{
     }
   });
   await t.test('mode switching cannot carry progress; links are configured independently by admin',async()=>{
-    await reset();const b=new Browser();await b.login();const auth={authorization:'Bearer '+env.ADMIN_ACCESS_KEY};
+    await reset();const b=new Browser();await b.login();const auth={};
     const links={discordUrl:'https://discord.gg/mode12',channelUrl:'https://youtube.com/@mode12',videoUrl:'',commentUrl:'',likeUrl:''};
     assert.equal((await b.call('admin/settings','POST',{plan:'12h',links},auth)).status,200);
     const selected=await b.call('flow/select','POST',{plan:'12h'});assert.equal(selected.data.steps[0].url,links.discordUrl);
@@ -155,7 +155,7 @@ test('server security integration',async t=>{
     const bad={...links,discordUrl:'javascript:alert(1)'};assert.equal((await b.call('admin/settings','POST',{plan:'24h',links:bad},auth)).status,400);
   });
   await t.test('6H requires one admin-selected Discord or YouTube mission before final CAPTCHA',async()=>{
-    await reset();const b=new Browser();await b.login();const auth={authorization:'Bearer '+env.ADMIN_ACCESS_KEY};
+    await reset();const b=new Browser();await b.login();const auth={};
     const links={discordUrl:'https://discord.gg/six',channelUrl:'https://youtube.com/@six',videoUrl:'',commentUrl:'',likeUrl:'',sixHourService:'youtube'};
     assert.equal((await b.call('admin/settings','POST',{plan:'6h',links},auth)).status,200);
     const selected=await b.call('flow/select','POST',{plan:'6h'});
@@ -184,9 +184,9 @@ test('server security integration',async t=>{
       async head(key){return objects.has(key)?wrapped(key,objects.get(key)):null;},
       async list({prefix}){return {objects:[...objects].filter(([key])=>key.startsWith(prefix)).map(([key,value])=>wrapped(key,value)),truncated:false};},
     };
-    const b=new Browser(),auth={authorization:'Bearer '+env.ADMIN_ACCESS_KEY};
+    const b=new Browser(),auth={};
     assert.equal((await b.call('admin/scripts','GET',undefined,auth)).status,401);
-    await b.login();assert.equal((await b.call('admin/scripts')).status,401);
+    await b.login();assert.equal((await b.call('admin/scripts')).status,200);
     assert.equal((await b.call('admin/scripts','GET',undefined,auth)).data.configured,true);
     const other=new Browser();await other.login('223456789012345678');assert.equal((await other.call('admin/scripts','GET',undefined,auth)).status,403);
     async function upload(body='return "original"',extra={}) {
@@ -242,5 +242,22 @@ test('server security integration',async t=>{
       assert(!logs.join(' ').includes('secret-code'));assert(!logs.join(' ').includes(state));assert(!logs.join(' ').includes('private details'));
       assert.equal((await b.call('auth/session')).data.user,null);
     } finally {globalThis.fetch=saved;console.warn=warn;}
+  });
+
+  await t.test('Discord session alone grants admin access; headers cannot bypass IDs, logout or expiry',async()=>{
+    await reset();const adminUser=new Browser(),anonymous=new Browser();const forged={authorization:'Bearer old-admin-password'};
+    for(const route of ['admin/keys','admin/settings','admin/scripts']) assert.equal((await anonymous.call(route,'GET',undefined,forged)).status,401);
+    await adminUser.login();
+    for(const route of ['admin/keys','admin/settings','admin/scripts']) assert.equal((await adminUser.call(route)).status,200);
+    const ids=env.DISCORD_ADMIN_USER_IDS;
+    try {
+      env.DISCORD_ADMIN_USER_IDS='';
+      assert.equal((await adminUser.call('admin/keys')).status,403);
+      assert.equal((await adminUser.call('admin/keys','POST',{kind:'permanent',amount:0,label:'denied'})).status,403);
+      assert.equal((await adminUser.call('admin/scripts','GET',undefined,forged)).status,403);
+    } finally {env.DISCORD_ADMIN_USER_IDS=ids;}
+    assert.equal((await adminUser.call('admin/keys','POST',{kind:'permanent',amount:0,label:'allowed'}, {origin:'https://evil.test'})).status,403);
+    await adminUser.call('auth/logout','POST',{});assert.equal((await adminUser.call('admin/keys','GET',undefined,forged)).status,401);
+    await adminUser.login();clock+=28_800_001;assert.equal((await adminUser.call('admin/keys')).status,401);
   });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

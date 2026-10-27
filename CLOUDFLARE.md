@@ -59,7 +59,7 @@ Database ID ของ `devil-key-db` ตั้งไว้ใน `cloudflare.con
 
 คีย์เลือกคัดลอกได้ทั้งคีย์ธรรมดาและโค้ดรันพร้อม `script_key` โดยเป็นคีย์เดียวกัน เมื่อใช้สคริปต์ครั้งแรก เซิร์ฟเวอร์ผูกคีย์กับค่าแฮช HWID ที่ตัวรันส่งมา เครื่องเดิมใช้ต่อได้จนหมดอายุ แต่ HWID อื่นถูกปฏิเสธ คีย์เก่าที่ไม่เคยผูกเครื่องจะผูกเมื่อใช้ครั้งแรกหลังอัปเดต ต้องรัน loader เวอร์ชันใหม่เพื่อส่ง HWID ตัวระบุนี้ขึ้นกับ executor/การติดตั้ง Roblox และไม่ใช่การรับรองตัวตนเครื่องจากฮาร์ดแวร์
 
-เพิ่ม Step 5 ด้วย Cloudflare → Turnstile → Add widget → Managed ตั้ง hostname `devil-websitekey.waeeccvv.workers.dev` แล้วเพิ่ม Runtime variable `TURNSTILE_SITE_KEY` และ Runtime Secret `TURNSTILE_SECRET_KEY` (อย่าส่ง Secret ในแชตหรือ commit) เมื่อมีค่าทั้งสองเว็บจะเปิด Step 5 และบังคับตรวจผลที่ Siteverify ก่อนรับคีย์ ผ่านแล้วไม่ต้องรอเวลาอีก หากยังไม่ตั้งทั้งสอง เว็บยังใช้ 4 Step เดิม; ถ้าตั้งเพียงค่าเดียวจะรับคีย์ใหม่ไม่ได้จนตั้งครบ คีย์ที่รับไปแล้วไม่ได้ถูกยกเลิกจากการเพิ่ม Step 5
+เพิ่ม Step 5 ด้วย Cloudflare → Turnstile → Add widget → Managed ตั้ง hostname `devil-hub.dev` แล้วเพิ่ม Runtime variable `TURNSTILE_SITE_KEY` และ Runtime Secret `TURNSTILE_SECRET_KEY` (อย่าส่ง Secret ในแชตหรือ commit) เมื่อมีค่าทั้งสองเว็บจะเปิด Step 5 และบังคับตรวจผลที่ Siteverify ก่อนรับคีย์ ผ่านแล้วไม่ต้องรอเวลาอีก หากยังไม่ตั้งทั้งสอง เว็บยังใช้ 4 Step เดิม; ถ้าตั้งเพียงค่าเดียวจะรับคีย์ใหม่ไม่ได้จนตั้งครบ คีย์ที่รับไปแล้วไม่ได้ถูกยกเลิกจากการเพิ่ม Step 5
 
 หน้ารับคีย์แสดงเวลาคงเหลือเป็นชั่วโมง นาที วินาที และนับถอยหลังตามเวลาของเซิร์ฟเวอร์อัตโนมัติ หลังบ้านแสดงตัวนับในแต่ละรายการด้วย ใช้วันหมดอายุเดิมใน D1 จึงรองรับคีย์ที่ออกไปแล้วโดยไม่ต้องรับคีย์ใหม่หรือย้ายฐานข้อมูล รีเฟรชหน้าเว็บไม่เพิ่มอายุคีย์ คีย์หมดอายุ/ยกเลิก/ถาวรจะแสดงสถานะแทนการนับถอยหลัง
 
@@ -92,3 +92,10 @@ npx wrangler secret put KEY_SECRET --config dist/server/wrangler.json
 Cloudflare ใช้ฐานข้อมูลใหม่แยกจากเว็บตัวอย่างบน Sites ไม่มีการย้ายคีย์หรือข้อมูลจาก Sites อัตโนมัติ
 
 เอกสารอ้างอิง: [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
+
+## Custom domain: devil-hub.dev
+
+- Bind `devil-hub.dev` to this Worker under Settings ? Domains & Routes ? Add ? Custom Domain.
+- Discord Developer Portal ? your application ? OAuth2 ? Redirects: add `https://devil-hub.dev/api/auth/discord/callback` and save. The server derives this callback from the request origin; no redirect URI environment variable is needed. Log in again on the new domain.
+- Turnstile ? existing widget ? Hostname Management: add `devil-hub.dev` (no protocol or path). Keep existing site/secret keys when using the same widget.
+- The supported script key gates use `https://devil-hub.dev` for Get Key and `/api/validate` for verification. Ensure Cloudflare security rules allow legitimate executor API requests; do not put an interactive browser challenge on this endpoint. The endpoint still verifies keys and binds devices on the server.

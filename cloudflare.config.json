@@ -1,3 +1,6 @@
 {
-  "database_id": "a6d4a6f2-6545-45a9-a10f-67e7ebaf02e6"
+  "database_id": "a6d4a6f2-6545-45a9-a10f-67e7ebaf02e6",
+  "database_provider": "d1",
+  "maintenance": true,
+  "turso_import_verified": false
 }

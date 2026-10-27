@@ -42,11 +42,15 @@ Do not bypass a failed migration against an unknown schema.
    tables, compares every field and checks foreign keys before committing. It
    refuses to overwrite an existing target. The separate verification repeats the
    comparison after commit. Both must succeed.
-4. Set **build** variables `DATABASE_PROVIDER=turso` and
-   `TURSO_MIGRATION_VERIFIED=1`. Set Worker **runtime** `DATABASE_PROVIDER=turso`.
+4. After verification, set `database_provider` to `turso` and
+   `turso_import_verified` to `true` in `cloudflare.config.json`. This records the
+   verified cutover for subsequent GitHub builds. A build-only environment override
+   `DATABASE_PROVIDER` also exists; remove any stale override from Cloudflare Builds.
    Keep maintenance enabled. Rebuild/deploy the current commit. The deployment
    skips D1 migrations only for this explicit Turso setting and retains D1 binding.
-   This flag is an operator assertion, not an automatic remote verification.
+   The built Worker explicitly selects Turso; other runtime values/secrets remain
+   preserved. The verification flag is an operator assertion, not an automatic
+   remote verification. Future schema changes require Turso migrations separately.
 5. Set `KEY_MAINTENANCE=0`, then test a known existing key on its original device,
    a mismatched device rejection, a revoked key, expiry, and a fresh step claim.
    Existing key strings, timestamps, revocations, HWID hashes and admin settings

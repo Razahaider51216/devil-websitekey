@@ -91,6 +91,7 @@ export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
 }
 export async function handle(req: Request, path: string[]) {
+  if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   const db = getDb(), now = Date.now(), route = path.join("/");
   if (route === "flow" && req.method === "GET") {
     const session = await flow(req, true);

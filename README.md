@@ -16,9 +16,8 @@
 
 โปรไฟล์ใช้รูป Discord และ avatar decoration ที่ Discord API ส่งมา บัญชีที่ไม่มีกรอบจะแสดงกรอบ DEVIL แทน ข้อมูลรูปในเซสชันอัปเดตเมื่อล็อกอินใหม่
 
-ก่อน deploy v1 ครั้งแรกบน Turso ให้สำรองฐานข้อมูล แล้วรัน `node --env-file=.env.turso.local scripts/turso-plan-schema.mjs` เพื่อเพิ่มคอลัมน์ `flows.plan` แบบไม่แก้คีย์เก่า คำสั่งรันซ้ำได้ สำหรับ D1 ใช้ migration `0005_key_plans.sql` ตามปกติ
 
-Production now uses **Turso/libSQL** on the existing Cloudflare Worker. Existing keys, expiry, revocations and HWID bindings were preserved. See [migration notes](TURSO-MIGRATION.md); D1 setup below remains available for local development.
+Production uses **Cloudflare D1 directly** through the `DB` Worker binding. This deployment starts a fresh database; existing Turso keys are not imported. Set `CF_D1_DATABASE_ID` in Build Variables to the new D1 database ID before building. Turso credentials and migration variables are not required.
 
 เว็บรับคีย์ DEVIL HUB ธีมดำ–แดง พร้อมโหมด 6H / 12H / 24H และหลังบ้านแอดมิน
 
@@ -35,7 +34,7 @@ Production now uses **Turso/libSQL** on the existing Cloudflare Worker. Existing
 5. ลง migration ฐานข้อมูล local: `node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --local --config dist/server/wrangler.json --persist-to .wrangler/state`
 6. รัน `npm start -- --port 5184` แล้วเปิด http://127.0.0.1:5184
 
-หลังบ้านอยู่ `/admin` ต้องล็อกอิน Discord ด้วย User ID ที่อยู่ใน `DISCORD_ADMIN_USER_IDS` แล้วใส่ `ADMIN_ACCESS_KEY` อีกครั้ง ผู้ใช้ทั่วไปไม่เห็นเมนู ADMIN และ API ปฏิเสธสิทธิ์ด้วย ฐานข้อมูล production ใช้ Turso; local ใช้ D1
+หลังบ้านอยู่ `/admin` ต้องล็อกอิน Discord ด้วย User ID ที่อยู่ใน `DISCORD_ADMIN_USER_IDS` แล้วใส่ `ADMIN_ACCESS_KEY` อีกครั้ง ผู้ใช้ทั่วไปไม่เห็นเมนู ADMIN และ API ปฏิเสธสิทธิ์ด้วย ฐานข้อมูล production ใช้ D1; local ใช้ D1
 
 ## Discord Login และสิทธิ์แอดมิน
 

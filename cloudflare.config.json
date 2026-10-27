@@ -1,8 +1,7 @@
 {
-  "database_id": "a6d4a6f2-6545-45a9-a10f-67e7ebaf02e6",
-  "database_provider": "turso",
+  "database_id": "00000000-0000-4000-8000-000000000000",
+  "database_provider": "d1",
   "maintenance": false,
-  "turso_import_verified": true,
   "require_turnstile": true,
   "discord_login_required": true
 }

@@ -13,8 +13,6 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 const { d1, r2 } = hostingConfig;
 const directCloudflare = process.env.DEVIL_CLOUDFLARE === "1";
 const directDatabaseId = process.env.CF_D1_DATABASE_ID?.trim() || cloudflareConfig.database_id;
-const directDatabaseProvider = process.env.DATABASE_PROVIDER || cloudflareConfig.database_provider;
-if (!["d1", "turso"].includes(directDatabaseProvider)) throw new Error("Invalid DATABASE_PROVIDER");
 if (directCloudflare && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(directDatabaseId) || directDatabaseId === SITE_CREATOR_PLACEHOLDER_DATABASE_ID)) {
   throw new Error("Set a valid Database ID in cloudflare.config.json or CF_D1_DATABASE_ID before running build:cf.");
 }
@@ -25,7 +23,7 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
   ...(directCloudflare ? { name: "devil-websitekey" } : {}),
-  ...(directCloudflare ? { vars: { DATABASE_PROVIDER: directDatabaseProvider, KEY_MAINTENANCE: cloudflareConfig.maintenance ? "1" : "0", REQUIRE_TURNSTILE: cloudflareConfig.require_turnstile ? "1" : "0", DISCORD_LOGIN_REQUIRED: cloudflareConfig.discord_login_required ? "1" : "0" } } : {}),
+  ...(directCloudflare ? { vars: { DATABASE_PROVIDER: "d1", KEY_MAINTENANCE: cloudflareConfig.maintenance ? "1" : "0", REQUIRE_TURNSTILE: cloudflareConfig.require_turnstile ? "1" : "0", DISCORD_LOGIN_REQUIRED: cloudflareConfig.discord_login_required ? "1" : "0" } } : {}),
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
   d1_databases: d1

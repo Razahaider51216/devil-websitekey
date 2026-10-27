@@ -1,3 +1,10 @@
+> Current deployment: Cloudflare D1 only, with a fresh database. Set Build Variable
+> `CF_D1_DATABASE_ID` to the new database ID. The Worker binding is `DB`.
+> Remove `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `TURSO_MIGRATION_VERIFIED`, and
+> `DATABASE_PROVIDER` from dashboard variables. Build with `npm run build:cf`
+> and deploy with `npm run deploy:cf`; D1 migrations run before deployment.
+> The old Turso database is retained but is not used or imported.
+
 # เปิด DEVIL KEY บน Cloudflare Workers
 
 เว็บนี้มี API และฐานข้อมูล ใช้ **Cloudflare Workers + Turso (libSQL)** ใน production ปัจจุบัน

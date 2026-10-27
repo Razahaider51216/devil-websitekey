@@ -24,16 +24,30 @@ export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, 
   useEffect(() => {
     if (!unlocked || passed || !siteKey) return;
     let cancelled = false, id: string | undefined;
+    let container: HTMLDivElement | null = null;
+    const reset = () => {
+      if (cancelled || !id) return;
+      try { window.turnstile?.reset(id); }
+      catch { setFailed(true); }
+    };
     setFailed(false);
     loadWidget().then(() => {
       if (cancelled || !node.current || !window.turnstile) return;
-      id = window.turnstile.render(node.current, { sitekey: siteKey, theme: "dark", language, size: "flexible", action, cData: challenge,
-        callback: (token: string) => { verify.current(token).catch(() => { if (!cancelled && id) window.turnstile?.reset(id); }); },
+      container = node.current;
+      id = window.turnstile.render(container, { sitekey: siteKey, theme: "dark", language, size: "flexible", action, cData: challenge,
+        callback: (token: string) => { if (!cancelled) void verify.current(token).catch(reset); },
         "error-callback": () => { if (!cancelled) setFailed(true); },
-        "expired-callback": () => { if (!cancelled && id) window.turnstile?.reset(id); },
+        "expired-callback": reset,
       });
     }).catch(() => { if (!cancelled) setFailed(true); });
-    return () => { cancelled = true; if (id) window.turnstile?.remove(id); };
+    return () => {
+      cancelled = true;
+      // The SDK can already have removed an expired/replaced widget. Cleanup
+      // must never throw into React and replace the entire key portal.
+      try { if (id) window.turnstile?.remove(id); }
+      catch { /* Already disposed: the server verification remains authoritative. */ }
+      finally { container?.replaceChildren(); }
+    };
   }, [siteKey, challenge, passed, unlocked, language, retry, action]);
   return <article className={`bot-step ${passed ? "step-done" : ""}`}>
     <div className="eyebrow">{action === "devil-key-login" ? "SECURITY CHECK" : `STEP ${String(stepNumber).padStart(2, "0")}`} / <ShieldCheck size={14}/></div>

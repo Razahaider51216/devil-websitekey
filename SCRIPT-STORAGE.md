@@ -101,4 +101,3 @@ denied page. This is presentation, not proof of client identity. Runtime files
 still require signed tickets and active key/device checks. A client authorized
 to execute downloaded code can also save that code; browser headers cannot
 provide absolute source secrecy. Keep R2 private and do not publish source in Git.
-

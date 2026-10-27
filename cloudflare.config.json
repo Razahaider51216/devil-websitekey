@@ -1,6 +1,7 @@
 {
   "database_id": "9428d9b5-5238-46fb-bcd9-becad23e6b36",
   "database_provider": "d1",
+  "scripts_bucket": "devil-scripts",
   "maintenance": false,
   "require_turnstile": true,
   "discord_login_required": true

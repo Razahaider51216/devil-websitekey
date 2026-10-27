@@ -13,6 +13,7 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 const { d1, r2 } = hostingConfig;
 const directCloudflare = process.env.DEVIL_CLOUDFLARE === "1";
 const directDatabaseId = process.env.CF_D1_DATABASE_ID?.trim() || cloudflareConfig.database_id;
+const scriptBucket = process.env.CF_R2_BUCKET_NAME?.trim() || cloudflareConfig.scripts_bucket;
 if (directCloudflare && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(directDatabaseId) || directDatabaseId === SITE_CREATOR_PLACEHOLDER_DATABASE_ID)) {
   throw new Error("Set a valid Database ID in cloudflare.config.json or CF_D1_DATABASE_ID before running build:cf.");
 }
@@ -36,7 +37,9 @@ const localBindingConfig = {
         },
       ]
     : [],
-  r2_buckets: r2
+  r2_buckets: directCloudflare && scriptBucket
+    ? [{ binding: "SCRIPT_FILES", bucket_name: scriptBucket }]
+    : r2
     ? [
         {
           binding: r2,

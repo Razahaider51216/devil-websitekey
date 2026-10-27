@@ -171,4 +171,59 @@ test('server security integration',async t=>{
     assert.equal((await b.call('admin/settings','POST',{plan:'6h',links:{...links,sixHourService:'invalid'}},auth)).status,400);
     assert.equal((await b.call('flow/select','POST',{plan:'12h'})).data.steps[0].url,env.DISCORD_URL);
   });
+
+  await t.test('private script vault enforces admin, drafts, key/HWID, immutable revisions and disable',async()=>{
+    await reset();
+    const objects=new Map();let reads=0;
+    const wrapped=(key,value)=>({key,size:value.bytes.length,customMetadata:value.meta,
+      arrayBuffer:async()=>value.bytes.slice().buffer});
+    env.SCRIPT_FILES={
+      async put(key,bytes,options){assert.equal(options.onlyIf.etagDoesNotMatch,'*');if(objects.has(key))return null;
+        const value={bytes:new Uint8Array(bytes),meta:options.customMetadata};objects.set(key,value);return wrapped(key,value);},
+      async get(key){reads++;return objects.has(key)?wrapped(key,objects.get(key)):null;},
+      async head(key){return objects.has(key)?wrapped(key,objects.get(key)):null;},
+      async list({prefix}){return {objects:[...objects].filter(([key])=>key.startsWith(prefix)).map(([key,value])=>wrapped(key,value)),truncated:false};},
+    };
+    const b=new Browser(),auth={authorization:'Bearer '+env.ADMIN_ACCESS_KEY};
+    assert.equal((await b.call('admin/scripts','GET',undefined,auth)).status,401);
+    await b.login();assert.equal((await b.call('admin/scripts')).status,401);
+    assert.equal((await b.call('admin/scripts','GET',undefined,auth)).data.configured,true);
+    const other=new Browser();await other.login('223456789012345678');assert.equal((await other.call('admin/scripts','GET',undefined,auth)).status,403);
+    async function upload(body='return "original"',extra={}) {
+      const req=new Request(origin+'/api/admin/scripts/anime-dice',{method:'POST',headers:{origin,'cf-connecting-ip':b.ip,
+        cookie:[...b.jar].map(([k,v])=>k+'='+v).join('; '),...auth,'content-type':'text/plain',...extra},body});
+      try{return await handle(req,['admin','scripts','anime-dice']);}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
+    }
+    assert.equal((await upload('return 1',{origin:'https://evil.test'})).status,403);
+    assert.equal((await upload('')).status,400);
+    assert.equal((await upload('binary\0file'.replace('\\0','\0'))).status,400);
+    assert.equal((await upload('return 1',{'content-length':String(9*1024*1024)})).status,413);
+    const first=await upload();assert.equal(first.status,201);const revision=await first.json();
+    assert.equal(objects.size,1);assert.equal(revision.published,false);
+    const created=(await b.call('admin/keys','POST',{kind:'days',amount:1,label:'vault test'},auth)).data;
+    const download={script:'anime-dice',key:created.key,hwid:'device-12345678'};
+    async function get(input=download,method='POST') {
+      const req=new Request(origin+'/api/scripts/download',{method,headers:{'content-type':'application/json','cf-connecting-ip':b.ip},...(method==='POST'?{body:JSON.stringify(input)}:{})});
+      try{return await handle(req,['scripts','download']);}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
+    }
+    assert.equal((await get()).status,404);assert.equal(reads,0);
+    assert.equal((await get({...download,key:'bad'})).status,403);assert.equal(reads,0);
+    assert.equal((await get(download,'GET')).status,404);
+    assert.equal((await b.call('admin/scripts/anime-dice','PUT',{revision:'../bad'},auth)).status,400);
+    assert.equal((await b.call('admin/scripts/anime-dice','PUT',{revision:revision.revision},auth)).status,200);
+    const response=await get();assert.equal(response.status,200);assert.equal(await response.text(),'return "original"');
+    assert.equal(response.headers.get('cache-control'),'private, no-store');assert.equal(response.headers.get('x-devil-sha256'),revision.sha256);
+    assert.equal((await get({...download,hwid:'different-device'})).status,403);
+    clock++;const second=await (await upload('return "new"')).json();assert.notEqual(second.revision,revision.revision);assert.equal(objects.size,2);
+    assert.equal(await (await get()).text(),'return "original"','uploads must not activate themselves');
+    const history=await b.call('admin/scripts/anime-dice','GET',undefined,auth);assert.equal(history.data.revisions.length,2);
+    const key=[...objects.keys()][0];const intact=objects.get(key).bytes;objects.get(key).bytes=new TextEncoder().encode('tampered');
+    assert.equal((await get()).status,503);objects.get(key).bytes=intact;
+    await b.call('admin/scripts/anime-dice','PUT',{enabled:false},auth);assert.equal((await get()).status,404);
+    await b.call('admin/scripts/anime-dice','PUT',{revision:second.revision},auth);assert.equal(await (await get()).text(),'return "new"');
+    await b.call('admin/scripts/anime-dice','PUT',{revision:revision.revision},auth);assert.equal(await (await get()).text(),'return "original"');
+    await b.call('admin/keys/'+created.id,'DELETE',{},auth);assert.equal((await get()).status,403);
+    delete env.SCRIPT_FILES;assert.equal((await b.call('admin/scripts','GET',undefined,auth)).data.configured,false);
+    assert.equal((await b.call('admin/scripts/anime-dice','GET',undefined,auth)).status,503);
+  });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

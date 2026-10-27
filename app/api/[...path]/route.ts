@@ -12,4 +12,4 @@ async function route(req: Request, context: { params: Promise<{ path: string[] }
     return json({ error: code === "DB_DAILY_LIMIT" ? "ฐานข้อมูลถึงโควตารายวัน กรุณาลองใหม่หลัง 07:00 น. (ไทย)" : "ระบบยังไม่พร้อม กรุณาลองอีกครั้งหรือติดต่อแอดมิน", code }, 503);
   }
 }
-export { route as GET, route as POST, route as DELETE };
+export { route as GET, route as POST, route as PUT, route as DELETE };

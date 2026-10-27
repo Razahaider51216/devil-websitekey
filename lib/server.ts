@@ -8,6 +8,7 @@ import { verifyTurnstile } from "./turnstile";
 import { readJson, cookieValue, requireOrigin } from "./security";
 import { discordRequired, requireDiscord, requireDiscordAdmin, flowOwner, flowOwnerCookie, handleDiscord } from "./discord-auth";
 import { plans, validPlan, planFor, type PlanId } from "./plans";
+import { handleScripts } from "./script-storage";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -110,9 +111,14 @@ export async function state(id: string) {
 export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
 }
-export async function handle(req: Request, path: string[]) {
+export async function handle(req: Request, path: string[]): Promise<Response> {
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   const db = getDb(), now = Date.now(), route = path.join("/");
+  if (path[0] === "scripts" || (path[0] === "admin" && path[1] === "scripts")) {
+    return handleScripts(req, path, { admin, rate, validate: (original, input) => handle(new Request(original, {
+      method: "POST", headers: new Headers(original.headers), body: JSON.stringify(input),
+    }), ["validate"]) });
+  }
   if (route.startsWith("auth/")) return handleDiscord(req, route, rate);
   if (route === "flow/select" && req.method === "POST") {
     sameOrigin(req); await rate(req, "select-plan", 30);

@@ -54,6 +54,42 @@ class Browser {
   }
 }
 test('server security integration',async t=>{
+  async function readySix(b) {
+    await b.call('flow/select','POST',{plan:'6h'});
+    await b.call('flow/open','POST',{step:1});await b.call('flow/return','POST',{step:1});clock+=30000;
+    const s=await b.call('flow');challenge=s.data.turnstile.challenge;captchaAction='devil-key-claim';
+    assert.equal((await b.call('flow/verify','POST',{token:'valid-token'})).status,200);
+  }
+  await t.test('account lock survives plan changes, new browsers and simultaneous claims until expiry',async()=>{
+    await reset();const a=new Browser(),b=new Browser();await a.login();await b.login();
+    await readySix(a);await readySix(b);
+    const claimed=await Promise.all([a.call('flow/claim','POST',{}),b.call('flow/claim','POST',{})]);
+    assert.ok(claimed.every(r=>[200,409].includes(r.status)),JSON.stringify(claimed));
+    assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,1);
+    const key=claimed.find(r=>r.status===200).data;
+    for(const browser of [a,b])for(const plan of ['12h','24h','6h']) {
+      const selected=await browser.call('flow/select','POST',{plan});
+      assert.equal(selected.data.key.key,key.key);assert.equal(selected.data.key.expiresAt,key.expiresAt);
+      assert.equal(selected.data.plan,'6h');assert.equal(selected.data.canClaim,false);
+      assert.equal((await browser.call('flow/open','POST',{step:1})).status,409);
+    }
+    const fresh=new Browser();await fresh.login();
+    assert.equal((await fresh.call('flow')).data.key.key,key.key);
+    assert.equal((await fresh.call('flow/claim','POST',{})).data.expiresAt,key.expiresAt);
+    const other=new Browser();await other.login('223456789012345678');
+    assert.equal((await other.call('flow/select','POST',{plan:'6h'})).data.key,null);
+    clock=key.expiresAt;
+    const renewed=await fresh.call('flow/select','POST',{plan:'12h'});
+    assert.equal(renewed.data.plan,'12h');assert.equal(renewed.data.key,null);
+    assert.ok(renewed.data.steps.every(s=>s.status==='ready'));
+  });
+  await t.test('signed legacy flow is adopted without losing its existing key',async()=>{
+    await reset();const b=new Browser();await b.login();await readySix(b);
+    const issued=await b.call('flow/claim','POST',{});
+    await client.execute('update flows set owner_id=null');await client.execute('update access_keys set owner_id=null');
+    assert.equal((await b.call('flow/select','POST',{plan:'24h'})).data.key.key,issued.data.key);
+    const fresh=new Browser();await fresh.login();assert.equal((await fresh.call('flow')).data.key.key,issued.data.key);
+  });
   await t.test('Discord required; captcha, state, replay and admin ID enforced without a password',async()=>{
     await reset();const b=new Browser();
     assert.equal((await b.call('flow')).status,401);
@@ -169,7 +205,7 @@ test('server security integration',async t=>{
     assert.equal((await b.call('admin/settings','POST',{plan:'6h',links:{...links,sixHourService:'discord'}},auth)).status,200);
     assert.equal((await b.call('flow')).data.steps[0].url,links.discordUrl);
     assert.equal((await b.call('admin/settings','POST',{plan:'6h',links:{...links,sixHourService:'invalid'}},auth)).status,400);
-    assert.equal((await b.call('flow/select','POST',{plan:'12h'})).data.steps[0].url,env.DISCORD_URL);
+    assert.equal((await b.call('flow/select','POST',{plan:'12h'})).data.plan,'6h','active key prevents switching to another duration');
   });
 
   await t.test('private script vault enforces admin, drafts, key/HWID, immutable revisions and disable',async()=>{
@@ -208,7 +244,7 @@ test('server security integration',async t=>{
     }
     assert.equal((await get()).status,404);assert.equal(reads,0);
     assert.equal((await get({...download,key:'bad'})).status,403);assert.equal(reads,0);
-    assert.equal((await get(download,'GET')).status,404);
+    const direct=await get(download,'GET');assert.equal(direct.status,403);assert.match(await direct.text(),/Huh, what are you doing here\?/);
     assert.equal((await b.call('admin/scripts/anime-dice','PUT',{revision:'../bad'},auth)).status,400);
     assert.equal((await b.call('admin/scripts/anime-dice','PUT',{revision:revision.revision},auth)).status,200);
     const response=await get();assert.equal(response.status,200);assert.equal(await response.text(),'return "original"');
@@ -288,6 +324,10 @@ test('server security integration',async t=>{
       try{return await handle(request,path);}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
     }
     const response=await fetchFile(result.data.entry);assert.equal(response.status,200);assert.equal(await response.text(),'return "unchanged runtime"');
+    const browserRequest=new Request(result.data.entry,{headers:{accept:'text/html','sec-fetch-mode':'navigate'}});
+    const browserResponse=await handle(browserRequest,new URL(result.data.entry).pathname.slice(5).split('/'));
+    assert.equal(browserResponse.status,403);assert.match(await browserResponse.text(),/Huh, what are you doing here\?/);
+    assert.equal(browserResponse.headers.get('content-type'),'text/html; charset=utf-8');
     assert.equal(response.headers.get('cache-control'),'private, no-store');
     assert.equal(await (await fetchFile(result.data.prefix+'main/loader')).text(),'return \"unchanged runtime\"');
     assert.equal(await (await fetchFile(result.data.prefix+'refs/heads/main/loader')).text(),'return \"unchanged runtime\"');
@@ -302,6 +342,8 @@ test('server security integration',async t=>{
     data.set('runtime/bootstrap/'+bootstrapHash+'.lua',bootstrapBytes);
     await client.execute({sql:'INSERT INTO site_settings (id,value,updated_at) VALUES (?,?,?)',args:['runtime:bootstrap',JSON.stringify({sha256:bootstrapHash,bytes:bootstrapBytes.length}),clock]});
     const {GET}=await import('../app/loader/route.ts');
+    const landing=await GET(new Request(origin+'/loader',{headers:{accept:'text/html'}}));
+    assert.equal(landing.status,403);assert.match(await landing.text(),/Huh, what are you doing here\?/);
     const publicEntry=await GET();assert.equal(publicEntry.status,200);assert.equal(await publicEntry.text(),'return "bootstrap only"');
     data.set('runtime/bootstrap/'+bootstrapHash+'.lua',new TextEncoder().encode('wrong'));
     assert.equal((await GET()).status,503,'public loader never serves corrupted content');

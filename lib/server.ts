@@ -65,12 +65,27 @@ export async function flow(req: Request, create = false, selectedPlan?: PlanId) 
   const cookie = candidate && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(candidate) ? candidate : undefined;
   const owned = !user || (cookie && await flowOwner(req, cookie, user.id));
   let row = cookie && owned ? await db.select().from(flows).where(eq(flows.id, cookie)).get() : undefined;
+  if (row?.ownerId && row.ownerId !== user?.id) row = undefined;
+  // Adopt pre-migration flows only with their signed account ownership cookie.
+  if (row && user && !row.ownerId) {
+    await db.update(flows).set({ ownerId: user.id }).where(eq(flows.id, row.id));
+    await db.update(keys).set({ ownerId: user.id }).where(eq(keys.flowId, row.id));
+    row.ownerId = user.id;
+  }
   let fresh = false;
-  const issued = selectedPlan && row ? await db.select().from(keys).where(eq(keys.flowId, row.id)).get() : undefined;
-  if (!row || row.expiresAt <= now || (selectedPlan && (row.plan !== selectedPlan || (issued && status(issued, now) !== "active")))) {
+  if (user && (row || create)) {
+    const active = await db.select().from(keys).where(and(eq(keys.ownerId, user.id), sql`${keys.revokedAt} is null`, sql`(${keys.expiresAt} is null or ${keys.expiresAt} > ${now})`, eq(keys.source, "steps"))).orderBy(desc(keys.expiresAt)).get();
+    if (active?.flowId && active.flowId !== row?.id) {
+      row = await db.select().from(flows).where(eq(flows.id, active.flowId)).get();
+      fresh = !!row;
+    }
+  }
+  const issued = row ? await db.select().from(keys).where(eq(keys.flowId, row.id)).get() : undefined;
+  const locked = !!issued && status(issued, now) === "active";
+  if (!row || (!locked && (row.expiresAt <= now || (selectedPlan && (row.plan !== selectedPlan || issued))))) {
     if (!create) fail(401, "เซสชันหมดอายุ กรุณาเริ่มขั้นตอนใหม่");
     await rate(req, "new-flow", 20);
-    row = { id: crypto.randomUUID(), createdAt: now, expiresAt: now + 86_400_000, plan: selectedPlan ?? null };
+    row = { id: crypto.randomUUID(), createdAt: now, expiresAt: now + 86_400_000, plan: selectedPlan ?? null, ownerId: user?.id ?? null };
     await db.insert(flows).values(row); fresh = true;
   }
   const cookies = fresh ? [`devil_flow=${row.id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${new URL(req.url).protocol === "https:" ? "; Secure" : ""}`] : [];
@@ -100,7 +115,7 @@ export async function state(id: string) {
     configurationUpdatedAt: conf.updatedAt,
     configurationId: conf.settingsId, modeSettingsUpdatedAt: conf.modeSettingsUpdatedAt,
     turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed },
-    canClaim: !!plan && result.every(s => s.status === "done") && (!enabled || (!!siteKey && !!secret && passed)), key: issued ? await presentKey(issued) : null };
+    canClaim: !issued && !!plan && result.every(s => s.status === "done") && (!enabled || (!!siteKey && !!secret && passed)), key: issued ? await presentKey(issued) : null };
 }
 export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
@@ -172,9 +187,10 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     const checks = await Promise.all(current.steps.map(async s => sql`exists (select 1 from steps where flow_id=${session.row.id} and number=${s.number} and id=${session.row.id + ":" + s.number} and link_hash=${await hash(s.url)} and opened_at is not null and returned_at >= opened_at and returned_at <= ${issuedAt - waitMs})`));
     const human = current.turnstile.enabled ? sql`exists (select 1 from flow_verifications where flow_id=${session.row.id} and verified_at > ${issuedAt - 300_000} and verified_at >= coalesce((select max(returned_at) + ${waitMs} from steps where flow_id=${session.row.id}),0))` : sql`1=1`;
     // Eligibility and unique issuance are checked by the same database statement.
-    await db.run(sql`insert into access_keys (id,flow_id,key_hash,label,source,created_at,expires_at,revoked_at,duration_kind,duration_amount)
-      select ${id},${session.row.id},${await hash(key)},${current.lifetimeHours + 'H access'},'steps',${issuedAt},${issuedAt + current.lifetimeHours * 3_600_000},null,'hours',${current.lifetimeHours}
+    await db.run(sql`insert into access_keys (id,flow_id,key_hash,label,source,created_at,expires_at,revoked_at,duration_kind,duration_amount,owner_id)
+      select ${id},${session.row.id},${await hash(key)},${current.lifetimeHours + 'H access'},'steps',${issuedAt},${issuedAt + current.lifetimeHours * 3_600_000},null,'hours',${current.lifetimeHours},${session.row.ownerId}
       where exists (select 1 from flows where id=${session.row.id} and expires_at > ${issuedAt} and plan=${current.plan})
+      and (${session.row.ownerId} is null or not exists (select 1 from access_keys where owner_id=${session.row.ownerId} and source='steps' and revoked_at is null and (expires_at is null or expires_at > ${issuedAt})))
       and coalesce((select updated_at from site_settings where id=${current.configurationId}),0)=${current.configurationUpdatedAt ?? 0}
       and coalesce((select updated_at from site_settings where id=${'links:' + current.plan}),0)=${current.modeSettingsUpdatedAt ?? 0}
       and ${checks.length ? sql.join(checks, sql` and `) : sql`1=1`} and ${human} on conflict(flow_id) do nothing`);
@@ -244,7 +260,7 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
       const createdAt = Date.now();
       let ends; try { ends = expiry(createdAt, duration); } catch (e) { fail(400, (e as Error).message); }
       const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
-      const row = { id, flowId: null, keyHash: await hash(key), label: String(input.label || "Admin key").slice(0, 80), source: "admin", createdAt, expiresAt: ends, revokedAt: null, durationKind: duration.kind, durationAmount: duration.kind === "permanent" ? 0 : duration.amount };
+      const row = { id, flowId: null, ownerId: null, keyHash: await hash(key), label: String(input.label || "Admin key").slice(0, 80), source: "admin", createdAt, expiresAt: ends, revokedAt: null, durationKind: duration.kind, durationAmount: duration.kind === "permanent" ? 0 : duration.amount };
       await db.insert(keys).values(row); return json(await presentKey(row), 201);
     }
     if (path[1] === "keys" && path.length === 3 && req.method === "DELETE") {

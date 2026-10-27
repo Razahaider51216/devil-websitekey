@@ -83,3 +83,22 @@ read from the ignored `.env.cloudflare.local`; account, bucket and database are
 explicitly selected. The importer changes only the `runtime:active` setting;
 it never changes existing keys, devices or mission progress. A previous manifest
 can be activated to roll back. The admin vault shows the active runtime release.
+# Account issuance and browser navigation
+
+Mission keys are limited to one active key per Discord account across plans,
+flows and browser sessions. Eligibility and the account lock are checked in the
+same SQLite insertion statement; repeated claims return the existing key without
+changing its expiry. Admin-created keys are separate from mission issuance.
+
+Migration 0006 adds nullable account ownership fields and an indexed lookup;
+existing keys, device bindings and expiry values are preserved. A legacy flow
+is attached to an account only after checking its signed flow-owner cookie.
+Old keys without any stored account association cannot be attributed after
+that cookie has been lost; the system does not guess ownership.
+
+Browser document requests for `/loader` and runtime file URLs display an access
+denied page. This is presentation, not proof of client identity. Runtime files
+still require signed tickets and active key/device checks. A client authorized
+to execute downloaded code can also save that code; browser headers cannot
+provide absolute source secrecy. Keep R2 private and do not publish source in Git.
+

@@ -43,6 +43,13 @@
       "when": 1793085497911,
       "tag": "0005_key_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793123715758,
+      "tag": "0006_account_key_lock",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { documentRequest, scriptLanding } from "./script-landing";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { keys, keyDevices, siteSettings } from "../db/schema";
@@ -54,6 +55,7 @@ async function active(): Promise<Pointer | null> {
 }
 export async function handleRuntime(req: Request, path: string[], deps: Dependencies): Promise<Response> {
   const route = path.join("/");
+  if (path[0] === "runtime" && path[1] === "files" && (documentRequest(req) || path.length < 5)) return scriptLanding();
   if (route === "runtime/session" && req.method === "POST") {
     const input = await readJson(req);
     if (input.bootstrap !== "private-runtime-domain-20261028-2") return json({ error: "This loader is retired. Run https://devil-hub.dev/loader", code: "LOADER_UPDATE_REQUIRED" }, 426);
@@ -73,7 +75,7 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
   }
   if (path[0] === "runtime" && path[1] === "files" && req.method === "GET" && path.length >= 5) {
     const data = await unseal(path[2], "runtime-delivery", vars().KEY_SECRET || "");
-    if (!data || typeof data.keyHash !== "string" || typeof data.hwidHash !== "string" || typeof data.release !== "string" || typeof data.sha256 !== "string") fail(403, "Runtime session expired or invalid");
+    if (!data || typeof data.keyHash !== "string" || typeof data.hwidHash !== "string" || typeof data.release !== "string" || typeof data.sha256 !== "string") return scriptLanding();
     await deps.rate(req, "runtime-file", 300);
     const row = await getDb().select().from(keys).where(eq(keys.keyHash, data.keyHash)).get();
     if (!row || status(row, Date.now()) !== "active") fail(403, "Key expired or revoked");

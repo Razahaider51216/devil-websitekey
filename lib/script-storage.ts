@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { scriptLanding } from "./script-landing";
 import { eq, like } from "drizzle-orm";
 import { getDb } from "../db";
 import { siteSettings } from "../db/schema";
@@ -73,6 +74,7 @@ async function sha256(bytes: Uint8Array) {
 }
 export async function handleScripts(req: Request, path: string[], deps: Dependencies): Promise<Response> {
   const route = path.join("/");
+  if (path[0] === "scripts" && req.method === "GET") return scriptLanding();
   if (route === "scripts/download" && req.method === "POST") {
     const input = await readJson(req), slug = slugValue(input.script);
     // Reuse the same server validator as /api/validate, including atomic device binding,

@@ -2,6 +2,7 @@ import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 export const flows = sqliteTable("flows", {
   id: text("id").primaryKey(), createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(),
   plan: text("plan"),
+  ownerId: text("owner_id"),
 });
 export const steps = sqliteTable("steps", {
   id: text("id").primaryKey(), flowId: text("flow_id").notNull().references(() => flows.id),
@@ -9,10 +10,11 @@ export const steps = sqliteTable("steps", {
 }, table => [index("steps_flow_id_idx").on(table.flowId)]);
 export const keys = sqliteTable("access_keys", {
   id: text("id").primaryKey(), flowId: text("flow_id").unique(), keyHash: text("key_hash").notNull().unique(),
+  ownerId: text("owner_id"),
   label: text("label").notNull(), source: text("source").notNull(),
   createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at"), revokedAt: integer("revoked_at"),
   durationKind: text("duration_kind").notNull(), durationAmount: integer("duration_amount").notNull(),
-}, table => [index("access_keys_created_at_idx").on(table.createdAt)]);
+}, table => [index("access_keys_created_at_idx").on(table.createdAt), index("access_keys_owner_expiry_idx").on(table.ownerId, table.expiresAt)]);
 export const limits = sqliteTable("rate_limits", {
   id: text("id").primaryKey(), hits: integer("hits").notNull(), expiresAt: integer("expires_at").notNull(),
 }, table => [index("rate_limits_expires_at_idx").on(table.expiresAt)]);

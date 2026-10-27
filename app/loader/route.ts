@@ -1,7 +1,9 @@
 import { serveBootstrap } from "../../lib/runtime-storage";
 import { RequestError } from "../../lib/security";
+import { documentRequest, scriptLanding } from "../../lib/script-landing";
 export const dynamic = "force-dynamic";
-export async function GET() {
+export async function GET(req?: Request) {
+  if (req && documentRequest(req)) return scriptLanding();
   try { return await serveBootstrap(); }
   catch (error) {
     return new Response("DEVIL HUB: domain loader unavailable; try again shortly", {

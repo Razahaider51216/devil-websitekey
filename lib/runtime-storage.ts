@@ -79,7 +79,12 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
     const device = await getDb().select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
     if (!device || device.hwidHash !== data.hwidHash) fail(403, "Device binding no longer matches");
     const manifest = await readManifest({ release: data.release, sha256: data.sha256 });
-    const name = path.slice(3).join("/");
+    let name = path.slice(3).join("/");
+    // Legacy libraries reference main assets. Resolve them within this immutable
+    // release's original root commit, never against a moving Git branch.
+    const rootRef = manifest.root.split("/")[0];
+    if (name.startsWith("main/")) name = rootRef + "/" + name.slice(5);
+    else if (name.startsWith("refs/heads/main/")) name = rootRef + "/" + name.slice(16);
     if (!Object.hasOwn(manifest.files, name)) fail(404, "File is not in this runtime release");
     const metadata = manifest.files[name], object = await bucket().get(blobKey(metadata.sha256));
     if (!object || object.size !== metadata.bytes) fail(503, "Runtime file is unavailable");

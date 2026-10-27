@@ -111,11 +111,11 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
   if (path[0] === "runtime" || route === "admin/runtime") {
     return handleRuntime(req, path, { admin, rate, validate: (original, input) => {
       const headers = new Headers(original.headers); headers.set("Content-Type", "application/json"); headers.delete("Content-Length");
-      return handle(new Request(original, { method: "POST", headers, body: JSON.stringify(input) }), ["validate"]);
+      return handle(new Request(original.url, { method: "POST", headers, body: JSON.stringify(input) }), ["validate"]);
     } });
   }
   if (path[0] === "scripts" || (path[0] === "admin" && path[1] === "scripts")) {
-    return handleScripts(req, path, { admin, rate, validate: (original, input) => handle(new Request(original, {
+    return handleScripts(req, path, { admin, rate, validate: (original, input) => handle(new Request(original.url, {
       method: "POST", headers: new Headers(original.headers), body: JSON.stringify(input),
     }), ["validate"]) });
   }

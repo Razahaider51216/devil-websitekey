@@ -288,6 +288,8 @@ test('server security integration',async t=>{
     }
     const response=await fetchFile(result.data.entry);assert.equal(response.status,200);assert.equal(await response.text(),'return "unchanged runtime"');
     assert.equal(response.headers.get('cache-control'),'private, no-store');
+    assert.equal(await (await fetchFile(result.data.prefix+'main/loader')).text(),'return \"unchanged runtime\"');
+    assert.equal(await (await fetchFile(result.data.prefix+'refs/heads/main/loader')).text(),'return \"unchanged runtime\"');
     assert.equal((await fetchFile(result.data.prefix+ref+'/not-published.lua')).status,404);
     assert.equal((await fetchFile(result.data.entry.replace('/files/','/files/x'))).status,403);
     data.set(blobKey(sha(source)),new TextEncoder().encode('tampered'));assert.equal((await fetchFile(result.data.entry)).status,503);data.set(blobKey(sha(source)),source);

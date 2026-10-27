@@ -1,5 +1,12 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ยืนยันว่าไม่ใช่บอท": "Verify you are human", "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา": "Claim your key immediately after verification. No countdown.",
+  "ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท": "Human verification has not been configured", "ติดต่อระบบยืนยันไม่สำเร็จ กรุณาลองอีกครั้ง": "Verification service unavailable. Please retry.",
+  "กรุณายืนยันว่าไม่ใช่บอทอีกครั้ง": "Please complete human verification again",
+  "ทำภารกิจให้ครบ {steps} ขั้นตอน แล้วปลดล็อกคีย์สำหรับ DEVIL HUB": "Complete all {steps} steps to unlock your DEVIL HUB key.",
+  "{steps} ภารกิจ. 1 คีย์.": "{steps} steps. 1 key.", "ทำครบ {steps} ขั้นตอนเพื่อปลดล็อกปุ่ม": "Complete all {steps} steps to unlock",
+  "รูปแบบการคัดลอก": "Copy format", "คีย์ธรรมดา": "Key only", "โค้ดรันพร้อมคีย์": "Script with key", "คัดลอกโค้ดรัน": "Copy script",
+  "คีย์ผูกกับเครื่องที่ใช้ครั้งแรก ใช้ซ้ำบนเครื่องเดิมได้จนหมดอายุ": "Bound to the first device used. Reuse on that device until expiry.",
   "เวลาคีย์คงเหลือ": "Key time remaining", "คีย์หมดอายุแล้ว": "Key expired",
   "{hours} ชม. {minutes} นาที {seconds} วินาที": "{hours} hr {minutes} min {seconds} sec",
   "รับคีย์": "Get key", "วิธีใช้งาน": "How to use", "กลับหน้ารับคีย์": "Get access",

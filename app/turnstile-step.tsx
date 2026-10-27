@@ -1,0 +1,45 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { Check, LockKeyhole, ShieldCheck } from "lucide-react";
+import { useLanguage } from "./language";
+
+type Widget = { render: (node: HTMLElement, options: Record<string, unknown>) => string; remove: (id: string) => void; reset: (id: string) => void };
+declare global { interface Window { turnstile?: Widget } }
+let loading: Promise<void> | null = null;
+function loadWidget() {
+  if (window.turnstile) return Promise.resolve();
+  if (!loading) loading = new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; script.async = true;
+    script.onload = () => resolve(); script.onerror = () => { script.remove(); loading = null; reject(new Error("widget unavailable")); };
+    document.head.appendChild(script);
+  });
+  return loading;
+}
+export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void> }) {
+  const { t, language } = useLanguage();
+  const node = useRef<HTMLDivElement>(null), verify = useRef(onVerify);
+  verify.current = onVerify;
+  const [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!unlocked || passed || !siteKey) return;
+    let cancelled = false, id: string | undefined;
+    setFailed(false);
+    loadWidget().then(() => {
+      if (cancelled || !node.current || !window.turnstile) return;
+      id = window.turnstile.render(node.current, { sitekey: siteKey, theme: "dark", language, size: "flexible", action: "devil-key-claim", cData: challenge,
+        callback: (token: string) => { verify.current(token).catch(() => { if (!cancelled && id) window.turnstile?.reset(id); }); },
+        "error-callback": () => { if (!cancelled) setFailed(true); },
+        "expired-callback": () => { if (!cancelled && id) window.turnstile?.reset(id); },
+      });
+    }).catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; if (id) window.turnstile?.remove(id); };
+  }, [siteKey, challenge, passed, unlocked, language, retry]);
+  return <article className={`bot-step ${passed ? "step-done" : ""}`}>
+    <div className="eyebrow">STEP 05 / <ShieldCheck size={14}/></div>
+    <h3>{t("ยืนยันว่าไม่ใช่บอท")}</h3>
+    <p>{t("ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
+    {passed ? <span className="done-label"><Check size={14}/>{t("เรียบร้อย")}</span> : !unlocked ? <span className="private-note"><LockKeyhole size={14}/>{t("กรุณาทำขั้นตอนก่อนหน้าให้ครบ")}</span> : !siteKey ? <p>{t("ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท")}</p> : <div ref={node}/>}
+    {failed && <button type="button" className="quiet-button" onClick={() => setRetry(v => v + 1)}>{t("ลองอีกครั้ง")}</button>}
+  </article>;
+}

@@ -14,3 +14,12 @@
 .key-countdown > strong { font-family: monospace; font-size: clamp(.85rem, 2.3vw, 1.2rem); font-variant-numeric: tabular-nums; color: #f1f1f4; }
 .key-countdown-expired > strong, .key-countdown-revoked > strong { color: #f87171; }
 td .key-countdown { padding: .6rem; margin-top: .4rem; min-width: 175px; }
+
+.key-output { margin-top: 1.2rem; min-width: 0; }
+.key-output .key-code { white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; font-size: 11px; line-height: 1.7; }
+.key-output .duration-options button { font-size: 12px; padding: 10px; }
+
+.bot-step { border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-top: 14px; background: #111216; min-width: 0; }
+.bot-step h3 { font-size: 16px; margin: 12px 0 8px; }
+.bot-step > p { font-size: 12px; color: #a0a0ab; line-height: 1.7; }
+.bot-step .done-label { display: flex; gap: 6px; }

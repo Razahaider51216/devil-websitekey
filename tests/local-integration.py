@@ -60,7 +60,7 @@ def claim(_):
 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
     claimed = list(pool.map(claim, range(4)))
 assert len({k['key'] for k in claimed}) == 1, 'concurrent claim must issue one key'
-assert request('validate','POST',{'key':claimed[0]['key']})['valid']
+assert request('validate','POST',{'key':claimed[0]['key'],'hwid':'local-integration-device'})['valid']
 assert request('flow')['key']['key'] == claimed[0]['key']
 print('PASS: concurrent and repeated claims return same valid persistent key',flush=True)
 
@@ -68,9 +68,9 @@ request('admin/keys','POST',{'kind':'days','amount':0},admin=True,expected=400)
 for kind, amount in [('permanent',0),('days',7),('months',1)]:
     made=request('admin/keys','POST',{'kind':kind,'amount':amount,'label':'Local QA '+kind},admin=True,expected=201)
     assert (made['expiresAt'] is None) == (kind == 'permanent')
-    assert request('validate','POST',{'key':made['key']})['valid']
+    assert request('validate','POST',{'key':made['key'],'hwid':'local-integration-device'})['valid']
     request('admin/keys/'+made['id'],'DELETE',admin=True)
-    assert request('validate','POST',{'key':made['key']})['status'] == 'revoked'
+    assert request('validate','POST',{'key':made['key'],'hwid':'local-integration-device'})['status'] == 'revoked'
     print('PASS: admin creates and revokes',kind,'key',flush=True)
 assert not request('validate','POST',{'key':'DEVIL-invalid'})['valid']
 print('ALL LOCAL INTEGRATION CHECKS PASSED',flush=True)

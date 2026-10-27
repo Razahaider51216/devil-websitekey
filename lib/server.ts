@@ -1,9 +1,10 @@
 import { env } from "cloudflare:workers";
 import { getDb } from "../db";
-import { flows, steps, keys, limits, siteSettings } from "../db/schema";
+import { flows, steps, keys, limits, siteSettings, keyDevices, flowVerifications } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { expiry, hash, keyFor, safeLink, status, stepState, WAIT_MS, type Duration } from "./domain";
 import { validateLinks, type Links } from "./settings";
+import { verifyTurnstile } from "./turnstile";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { constructor(public code: number, message: string) { super(message); } }
@@ -79,7 +80,12 @@ export async function state(id: string) {
     const step = valid ? row : { openedAt: null, returnedAt: null };
     result.push({ ...s, configured: !!s.url, status: stepState(step, now), deadline: step.returnedAt === null ? null : step.returnedAt + WAIT_MS });
   }
-  return { serverNow: now, lifetimeHours: conf.lifetimeHours, steps: result, canClaim: result.every(s => s.status === "done"), key: issued ? await presentKey(issued) : null };
+  const siteKey = vars().TURNSTILE_SITE_KEY || "", secret = vars().TURNSTILE_SECRET_KEY || "";
+  const enabled = !!(siteKey || secret);
+  const verified = enabled ? await db.select().from(flowVerifications).where(eq(flowVerifications.flowId, id)).get() : null;
+  return { serverNow: now, lifetimeHours: conf.lifetimeHours, steps: result,
+    turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed: !!verified },
+    canClaim: result.every(s => s.status === "done") && (!enabled || !!verified), key: issued ? await presentKey(issued) : null };
 }
 export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
@@ -113,17 +119,44 @@ export async function handle(req: Request, path: string[]) {
     sameOrigin(req); await rate(req, "claim", 20); const session = await flow(req);
     const current = await state(session.row.id);
     if (current.key) return json(current.key);
-    if (!current.canClaim) fail(409, "กรุณาทำครบ 4 ขั้นตอนและรอคูลดาวน์");
+    if (!current.canClaim) {
+      if (current.steps.every(s => s.status === "done") && current.turnstile.enabled) fail(409, "กรุณายืนยันว่าไม่ใช่บอทอีกครั้ง");
+      fail(409, "กรุณาทำครบ 4 ขั้นตอนและรอคูลดาวน์");
+    }
     const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
     await db.insert(keys).values({ id, flowId: session.row.id, keyHash: await hash(key), label: "Standard access", source: "steps", createdAt: now, expiresAt: now + current.lifetimeHours * 3_600_000, durationKind: "hours", durationAmount: current.lifetimeHours, revokedAt: null }).onConflictDoNothing();
     const row = await db.select().from(keys).where(eq(keys.flowId, session.row.id)).get();
     return json(await presentKey(row!));
   }
+  if (route === "flow/verify" && req.method === "POST") {
+    sameOrigin(req); await rate(req, "turnstile", 15);
+    const session = await flow(req), current = await state(session.row.id);
+    if (!current.turnstile.enabled || !current.turnstile.configured) fail(503, "ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท");
+    if (!current.steps.every(s => s.status === "done")) fail(409, "กรุณาทำขั้นตอนก่อนหน้าให้ครบ");
+    if (current.turnstile.passed || current.key) return json(current);
+    const { token } = await body(req);
+    let valid = false;
+    try { valid = await verifyTurnstile(vars().TURNSTILE_SECRET_KEY, token, new URL(req.url).hostname, current.turnstile.challenge); }
+    catch { fail(503, "ติดต่อระบบยืนยันไม่สำเร็จ กรุณาลองอีกครั้ง"); }
+    if (!valid) fail(400, "กรุณายืนยันว่าไม่ใช่บอทอีกครั้ง");
+    await db.insert(flowVerifications).values({ flowId: session.row.id, verifiedAt: now }).onConflictDoNothing();
+    return json(await state(session.row.id));
+  }
   if (route === "validate" && req.method === "POST") {
     await rate(req, "validate", 60); const input = await body(req);
     if (typeof input.key !== "string" || input.key.length > 100) fail(400, "รูปแบบคีย์ไม่ถูกต้อง");
     const row = await db.select().from(keys).where(eq(keys.keyHash, await hash(input.key.trim()))).get();
-    return json({ valid: !!row && status(row, now) === "active", status: row ? status(row, now) : "invalid", expiresAt: row?.expiresAt ?? null });
+    const keyStatus = row ? status(row, now) : "invalid";
+    if (!row || keyStatus !== "active") return json({ valid: false, status: keyStatus, expiresAt: row?.expiresAt ?? null });
+    if (typeof input.hwid !== "string" || input.hwid.trim().length < 8 || input.hwid.length > 512) {
+      return json({ valid: false, status: "hwid_required", expiresAt: row.expiresAt });
+    }
+    const hwidHash = await hash("DEVIL-HWID:v1:" + input.hwid.trim());
+    // A primary key makes simultaneous first-use requests compete for exactly one binding.
+    await db.insert(keyDevices).values({ keyId: row.id, hwidHash, boundAt: now }).onConflictDoNothing();
+    const binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
+    const matched = binding?.hwidHash === hwidHash;
+    return json({ valid: matched, status: matched ? "active" : "hwid_mismatch", expiresAt: row.expiresAt });
   }
   if (route.startsWith("admin")) {
     await admin(req);

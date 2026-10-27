@@ -15,6 +15,20 @@
       "when": 1793019705737,
       "tag": "0001_calm_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793060227269,
+      "tag": "0002_stiff_vulcan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793060379116,
+      "tag": "0003_sloppy_anthem",
+      "breakpoints": true
     }
   ]
 }

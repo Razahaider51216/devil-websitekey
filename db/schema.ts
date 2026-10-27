@@ -15,6 +15,15 @@ export const keys = sqliteTable("access_keys", {
 export const limits = sqliteTable("rate_limits", {
   id: text("id").primaryKey(), hits: integer("hits").notNull(), expiresAt: integer("expires_at").notNull(),
 });
+export const keyDevices = sqliteTable("key_devices", {
+  keyId: text("key_id").primaryKey().references(() => keys.id),
+  hwidHash: text("hwid_hash").notNull(),
+  boundAt: integer("bound_at").notNull(),
+});
+export const flowVerifications = sqliteTable("flow_verifications", {
+  flowId: text("flow_id").primaryKey().references(() => flows.id),
+  verifiedAt: integer("verified_at").notNull(),
+});
 export const siteSettings = sqliteTable("site_settings", {
   id: text("id").primaryKey(),
   value: text("value").notNull(),

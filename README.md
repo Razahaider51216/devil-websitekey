@@ -50,12 +50,12 @@
 POST `/api/validate` พร้อม JSON:
 
 ```json
-{"key":"DEVIL-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"}
+{"key":"DEVIL-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX","hwid":"stable-device-identifier"}
 ```
 
-ผลลัพธ์มี valid, status และ expiresAt (Unix milliseconds หรือ null สำหรับถาวร) สถานะคือ active, invalid, expired, revoked มี rate limit ฝั่งเซิร์ฟเวอร์
+ผลลัพธ์มี valid, status และ expiresAt (Unix milliseconds หรือ null สำหรับถาวร) สถานะคือ active, invalid, expired, revoked, hwid_required, hwid_mismatch มี rate limit ฝั่งเซิร์ฟเวอร์ คีย์ผูก HWID ครั้งแรกแบบ atomic และเก็บเป็นแฮช เครื่องเดิมตรวจซ้ำได้ เครื่องอื่นใช้คีย์เดียวกันไม่ได้
 
-งานนี้สร้างเว็บและ API ก่อน ยังไม่ได้แก้ loader ของ DEVIL HUB ให้บังคับใส่คีย์
+Climb for Eggs, Anime Dice และ Break and Steal an Egg ใช้ API นี้แล้ว รองรับกรอกคีย์เองหรือกำหนด `script_key` ก่อนเรียก loader หลัก ดูการตั้งค่า Cloudflare และ Turnstile Step 5 ใน CLOUDFLARE.md
 
 ## ทดสอบ
 

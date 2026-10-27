@@ -56,6 +56,7 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
   const route = path.join("/");
   if (route === "runtime/session" && req.method === "POST") {
     const input = await readJson(req);
+    if (input.bootstrap !== "private-runtime-domain-20261028-2") return json({ error: "This loader is retired. Run https://devil-hub.dev/loader", code: "LOADER_UPDATE_REQUIRED" }, 426);
     const checked = await deps.validate(req, { key: input.key, hwid: input.hwid });
     if (!checked.ok) return checked;
     const verdict = await checked.json() as { valid: boolean; status: string; expiresAt: number | null };
@@ -112,4 +113,15 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
     }
   }
   fail(404, "Not found");
+}
+export async function serveBootstrap(): Promise<Response> {
+  const row = await getDb().select().from(siteSettings).where(eq(siteSettings.id, "runtime:bootstrap")).get();
+  if (!row) fail(503, "Domain loader is not published yet");
+  const pointer = JSON.parse(row.value) as { sha256: string; bytes: number };
+  if (!/^[a-f0-9]{64}$/.test(pointer.sha256) || !Number.isSafeInteger(pointer.bytes) || pointer.bytes > 1024 * 1024) fail(503, "Invalid domain loader metadata");
+  const object = await bucket().get(`runtime/bootstrap/${pointer.sha256}.lua`);
+  if (!object || object.size !== pointer.bytes) fail(503, "Domain loader is unavailable");
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  if (await digest(bytes) !== pointer.sha256) fail(503, "Domain loader integrity check failed");
+  return new Response(bytes, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }

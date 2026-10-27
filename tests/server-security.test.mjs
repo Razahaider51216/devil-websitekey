@@ -273,8 +273,9 @@ test('server security integration',async t=>{
     const manifestBytes=new TextEncoder().encode(JSON.stringify(manifest));const pointer={release,sha256:sha(manifestBytes)};
     data.set(manifestKey(release),manifestBytes);
     const created=(await b.call('admin/keys','POST',{kind:'permanent',amount:0,label:'runtime'})).data;
-    const login={key:created.key,hwid:'executor:runtime-device'};
+    const login={key:created.key,hwid:'executor:runtime-device',bootstrap:'private-runtime-domain-20261028-2'};
     assert.equal((await b.call('runtime/session','POST',{...login,key:'invalid'})).status,403);
+    assert.equal((await b.call('runtime/session','POST',{key:created.key,hwid:login.hwid})).status,426);
     assert.equal((await b.call('runtime/session','POST',login)).status,503);
     assert.equal((await b.call('admin/runtime','POST',pointer)).status,409,'incomplete dependency upload cannot be published');
     data.set(blobKey(sha(source)),source);
@@ -296,6 +297,14 @@ test('server security integration',async t=>{
     data.set(manifestKey(release),new TextEncoder().encode('{}'));assert.equal((await fetchFile(result.data.entry)).status,503);data.set(manifestKey(release),manifestBytes);
     const now=clock;clock+=86_400_001;assert.equal((await fetchFile(result.data.entry)).status,403);clock=now;
     await b.call('admin/keys/'+created.id,'DELETE',{});assert.equal((await fetchFile(result.data.entry)).status,403);
+
+    const bootstrapBytes=new TextEncoder().encode('return "bootstrap only"'),bootstrapHash=sha(bootstrapBytes);
+    data.set('runtime/bootstrap/'+bootstrapHash+'.lua',bootstrapBytes);
+    await client.execute({sql:'INSERT INTO site_settings (id,value,updated_at) VALUES (?,?,?)',args:['runtime:bootstrap',JSON.stringify({sha256:bootstrapHash,bytes:bootstrapBytes.length}),clock]});
+    const {GET}=await import('../app/loader/route.ts');
+    const publicEntry=await GET();assert.equal(publicEntry.status,200);assert.equal(await publicEntry.text(),'return "bootstrap only"');
+    data.set('runtime/bootstrap/'+bootstrapHash+'.lua',new TextEncoder().encode('wrong'));
+    assert.equal((await GET()).status,503,'public loader never serves corrupted content');
     delete env.SCRIPT_FILES;
   });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

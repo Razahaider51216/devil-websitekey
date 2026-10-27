@@ -71,8 +71,10 @@ main loader and scopes compilation so own-repository dependency URLs point to
 `/api/runtime/files/<ticket>/<original-commit>/<original-path>`. Bytes downloaded
 from R2 remain identical; existing size/checksum tests still see the originals.
 The real `game` instance and executor globals are preserved. Queued re-execution
-continues to use the public Git `main/loader?v=vm-1` URL, so a rejoin does not
-reuse an expired private ticket.
+uses `https://devil-hub.dev/loader`, so a rejoin does not reuse an expired private
+ticket. The previous Git main entry is retired. The website's copyable launch
+code also uses the domain entry. Runtime sessions require the current bootstrap
+release; the previous Git bootstrap cannot open a new delivery session.
 
 Privileged imports run locally with `node scripts/import-runtime.mjs <absolute
 runtime-manifest.json>` and verify every uploaded content hash by reading it

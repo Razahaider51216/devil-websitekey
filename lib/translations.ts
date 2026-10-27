@@ -1,5 +1,6 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ฐานข้อมูลถึงโควตารายวัน กรุณาลองใหม่หลัง 07:00 น. (ไทย)": "Daily database quota reached. Please retry after 00:00 UTC (07:00 Bangkok).",
   "ยืนยันว่าไม่ใช่บอท": "Verify you are human", "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา": "Claim your key immediately after verification. No countdown.",
   "ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท": "Human verification has not been configured", "ติดต่อระบบยืนยันไม่สำเร็จ กรุณาลองอีกครั้ง": "Verification service unavailable. Please retry.",
   "กรุณายืนยันว่าไม่ใช่บอทอีกครั้ง": "Please complete human verification again",

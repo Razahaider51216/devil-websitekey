@@ -17,8 +17,15 @@ export default function Home() {
   const { t, language } = useLanguage();
   const [flow, setFlow] = useState<Flow | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState<number | string | null>(null), [clock, setClock] = useState(Date.now());
   const offset = useRef(0), returning = useRef(false), fresh = useRef<Flow | null>(null);
+  const refreshing = useRef(false), retryAfter = useRef(0);
   const apply = useCallback((value: Flow) => { offset.current = value.serverNow - Date.now(); fresh.current = value; setClock(Date.now()); setFlow(value); }, []);
-  const refresh = useCallback(async () => { try { apply(await api("flow")); } catch (e) { setError((e as Error).message); } }, [apply]);
+  const refresh = useCallback(async (force = false) => {
+    if (refreshing.current || (!force && Date.now() < retryAfter.current)) return;
+    refreshing.current = true;
+    try { apply(await api("flow")); retryAfter.current = 0; setError(""); }
+    catch (e) { retryAfter.current = Date.now() + 30000; setError((e as Error).message); }
+    finally { refreshing.current = false; }
+  }, [apply]);
   const returned = useCallback(async () => {
     const step = fresh.current?.steps.find(s => s.status === "opened"); if (!step || returning.current) return;
     returning.current = true;
@@ -26,8 +33,8 @@ export default function Home() {
   }, [apply]);
   useEffect(() => {
     refresh(); const timer = setInterval(() => setClock(Date.now()), 500);
-    const poll = setInterval(() => { if (document.visibilityState === "visible" && fresh.current?.steps.some(s => s.status === "waiting")) refresh(); }, 2500);
-    const keyPoll = setInterval(() => { if (document.visibilityState === "visible" && fresh.current?.key) refresh(); }, 30000);
+    const poll = setInterval(() => { if (document.visibilityState === "visible" && fresh.current?.steps.some(s => s.status === "waiting" && s.deadline !== null && s.deadline <= Date.now() + offset.current)) refresh(); }, 500);
+    const keyPoll = setInterval(() => { if (document.visibilityState === "visible" && fresh.current?.key) refresh(); }, 120000);
     const onFocus = () => { if (document.visibilityState === "visible") { setClock(Date.now()); if (fresh.current?.key) refresh(); else returned(); } };
     window.addEventListener("focus", onFocus); document.addEventListener("visibilitychange", onFocus);
     return () => { clearInterval(timer); clearInterval(poll); clearInterval(keyPoll); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
@@ -51,7 +58,7 @@ export default function Home() {
     <p>{granted ? t("คีย์ของคุณพร้อมแล้ว คัดลอกและเก็บไว้สำหรับเข้าใช้งาน DEVIL HUB") : t("ทำภารกิจให้ครบ {steps} ขั้นตอน แล้วปลดล็อกคีย์สำหรับ DEVIL HUB", {steps:totalSteps})}<br/><span>{granted ? t("เริ่มต้นประสบการณ์ครั้งถัดไปได้เลย") : t("เข้าร่วมคอมมูนิตี้ สนับสนุนช่อง แล้วไปให้สุดด้วยกัน")}</span></p>
     <div className="hero-tags"><span><ShieldCheck size={14}/> OFFICIAL DEVIL HUB</span><span><Clock3 size={14}/> {t("30 วินาที / ขั้นตอน")}</span><span><KeyRound size={14}/> {flow?.lifetimeHours || 24}H ACCESS</span></div></div>
     <div className={`terminal-art ${granted ? "granted-art" : ""}`} aria-hidden="true"><div className="art-top"><span><i/> SECURE ACCESS TERMINAL</span><span>DK—001</span></div><div className="art-grid"/><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-key"><KeyRound strokeWidth={1.1}/></div><span className="art-label label-a">AUTHENTICATION_REQUIRED</span><span className="art-label label-b">// ACCESS_LAYER_04</span><div className="art-bottom"><span><i className="status-dot"/> {granted ? "ACCESS GRANTED" : "AWAITING YOUR SIGNAL"}</span><span>256 / KEY</span></div></div></section>
-    {error && <div className="notice error" role="alert">{t(error)}<button onClick={() => { setError(""); refresh(); }}>{t("ลองอีกครั้ง")}</button></div>}
+    {error && <div className="notice error" role="alert">{t(error)}<button onClick={() => { setError(""); refresh(true); }}>{t("ลองอีกครั้ง")}</button></div>}
     {granted ? <section className="key-layout"><div className="key-ticket"><div className="ticket-top"><span className="eyebrow"><Check size={15}/> AUTHENTICATION COMPLETE</span><span className="pill success">{(keyState === "active" || keyState === "permanent") ? t("พร้อมใช้งาน") : t("หมดอายุ / ถูกยกเลิก")}</span></div><div className="success-badge"><Check size={29}/></div><h2>YOUR KEY IS READY.</h2><p>{t("คีย์สำหรับการเข้าถึงครั้งต่อไปของคุณ")}</p><KeyOutput value={flow!.key!.key}/><KeyCountdown expiresAt={flow!.key!.expiresAt} status={flow!.key!.status} now={clock + offset.current}/><div className="ticket-meta"><span>{t("อายุการใช้งาน")}<strong>{flow!.lifetimeHours} {t("ชั่วโมง")}</strong></span><span>{t("หมดอายุ")}<strong>{date(flow!.key!.expiresAt, language)}</strong></span></div><p className="private-note"><LockKeyhole size={13}/> {t("เก็บคีย์นี้เป็นส่วนตัว และอย่าแชร์กับผู้อื่น")}</p></div><Usage/></section>
     : <section className="access-layout"><div className="steps-area"><div className="section-heading"><div><div className="eyebrow muted">THE CHECKLIST</div><h2>{t("{steps} ภารกิจ. 1 คีย์.", {steps:totalSteps})}</h2></div><span className="mono muted">{String(progress).padStart(2, "0")} / {String(totalSteps).padStart(2, "0")} COMPLETE</span></div><div className="steps-list">{flow ? flow.steps.map((step, i) => {
       const Icon = icons[i], done = step.status === "done", locked = step.number > current, active = step.number === current;

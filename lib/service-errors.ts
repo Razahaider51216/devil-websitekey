@@ -9,6 +9,7 @@ export function serviceErrorCode(error: unknown): string {
     current = typeof current === "object" && "cause" in current ? current.cause : null;
   }
   const text = messages.join("\n");
+  if (/exceeded.*D1.*daily.*(?:read|write).*limit/i.test(text)) return "DB_DAILY_LIMIT";
   if (/D1 binding .*unavailable/.test(text)) return "DB_BINDING_MISSING";
   if (/no such table|no such column/i.test(text)) return "DB_SCHEMA_MISSING";
   if (/KEY_SECRET must contain/.test(text)) return "KEY_SECRET_MISSING";

@@ -41,8 +41,8 @@ export async function rate(req: Request, kind: string, maximum: number) {
   const ip = req.headers.get("cf-connecting-ip") || "local";
   const id = await hash(`${kind}:${ip}:${bucket}`);
   const db = getDb();
-  await db.insert(limits).values({ id, hits: 1, expiresAt: (bucket + 2) * 60_000 }).onConflictDoUpdate({ target: limits.id, set: { hits: sql`${limits.hits} + 1` } });
-  const record = await db.select().from(limits).where(eq(limits.id, id)).get();
+  const record = await db.insert(limits).values({ id, hits: 1, expiresAt: (bucket + 2) * 60_000 })
+    .onConflictDoUpdate({ target: limits.id, set: { hits: sql`${limits.hits} + 1` } }).returning({ hits: limits.hits }).get();
   if (record!.hits > maximum) fail(429, "ทำรายการถี่เกินไป กรุณารอสักครู่");
   if (Math.random() < .02) await db.delete(limits).where(sql`${limits.expiresAt} < ${now}`);
 }
@@ -153,8 +153,11 @@ export async function handle(req: Request, path: string[]) {
     }
     const hwidHash = await hash("DEVIL-HWID:v1:" + input.hwid.trim());
     // A primary key makes simultaneous first-use requests compete for exactly one binding.
-    await db.insert(keyDevices).values({ keyId: row.id, hwidHash, boundAt: now }).onConflictDoNothing();
-    const binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
+    let binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
+    if (!binding) {
+      await db.insert(keyDevices).values({ keyId: row.id, hwidHash, boundAt: now }).onConflictDoNothing();
+      binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
+    }
     const matched = binding?.hwidHash === hwidHash;
     return json({ valid: matched, status: matched ? "active" : "hwid_mismatch", expiresAt: row.expiresAt });
   }

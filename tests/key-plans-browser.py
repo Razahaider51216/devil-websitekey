@@ -11,7 +11,7 @@ with sync_playwright() as p:
     def configuration():return {'links':links,'updatedAt':None,'modes':modes}
     def state():
         hours=int(current[:-1]) if current else 24
-        return {'version':'1.0.0','plan':current,'selected':bool(current),'serverNow':int(time.time()*1000),'lifetimeHours':hours,'waitSeconds':{'6h':0,'12h':49,'24h':90}.get(current,0),'steps':steps,'turnstile':{'enabled':True,'configured':True,'siteKey':'mock-site','challenge':'challenge-'+str(current),'passed':passed},'canClaim':bool(current) and all(s['status']=='done' for s in steps) and passed,'key':key}
+        return {'version':'1.0.0','plan':current,'selected':bool(current),'serverNow':int(time.time()*1000),'lifetimeHours':hours,'waitSeconds':{'6h':30,'12h':49,'24h':90}.get(current,0),'steps':steps,'turnstile':{'enabled':True,'configured':True,'siteKey':'mock-site','challenge':'challenge-'+str(current),'passed':passed},'canClaim':bool(current) and all(s['status']=='done' for s in steps) and passed,'key':key}
     def api(route):
         global current,steps,passed,key,modes
         path=route.request.url.split('/api/')[1];data=route.request.post_data_json if route.request.method=='POST' else {}
@@ -19,7 +19,7 @@ with sync_playwright() as p:
         elif path=='flow/select':
             if current!=data['plan']:
                 current=data['plan'];passed=False;key=None
-                steps=[{'number':i+1,'title':['เข้าร่วม Discord','ติดตามช่อง DEVIL HUB','คอมเมนต์วิดีโอล่าสุด'][i],'subtitle':'DEVIL HUB / COMMUNITY','service':['DISCORD','YOUTUBE','COMMENT'][i],'url':'https://example.com/mission','configured':True,'status':'ready','deadline':None} for i in range({'6h':0,'12h':2,'24h':3}[current])]
+                steps=[{'number':i+1,'title':['เข้าร่วม Discord','ติดตามช่อง DEVIL HUB','คอมเมนต์วิดีโอล่าสุด'][i],'subtitle':'DEVIL HUB / COMMUNITY','service':['DISCORD','YOUTUBE','COMMENT'][i],'url':'https://example.com/mission','configured':True,'status':'ready','deadline':None} for i in range({'6h':1,'12h':2,'24h':3}[current])]
             out=state()
         elif path=='flow':out=state()
         elif path=='flow/open':
@@ -45,7 +45,7 @@ with sync_playwright() as p:
     page.set_viewport_size({'width':390,'height':844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path='backups/key-plans-mobile.png',full_page=True)
-    for mode,n,total,wait in [('6h',0,1,0),('12h',2,3,49),('24h',3,4,90)]:
+    for mode,n,total,wait in [('6h',1,2,30),('12h',2,3,49),('24h',3,4,90)]:
         if mode!='6h':page.goto('http://127.0.0.1:5184/');page.locator('.key-plan').first.wait_for()
         page.locator('.key-plan-'+mode+' button').click();page.locator('.access-layout').wait_for()
         assert page.locator('.steps-list .step-row').count()==n
@@ -66,7 +66,7 @@ with sync_playwright() as p:
     page.locator('.mode-tabs button').filter(has_text='12H').click();assert page.locator('.link-field').count()==2
     page.locator('#link-discordUrl').fill('https://example.com/unsaved12');page.locator('.mode-tabs button').filter(has_text='24H').click();assert page.locator('#link-discordUrl').input_value()==links['discordUrl'];page.locator('.mode-tabs button').filter(has_text='12H').click();page.locator('#link-discordUrl').fill('https://example.com/new12');page.locator('.link-settings .primary-button').click();page.wait_for_timeout(200);assert saved==['12h']
     page.locator('.mode-tabs button').filter(has_text='24H').click();assert page.locator('.link-field').count()==4
-    page.locator('.mode-tabs button').filter(has_text='6H').click();assert page.locator('.link-field').count()==0
+    page.locator('.mode-tabs button').filter(has_text='6H').click();assert page.locator('.link-field input').count()==1;page.locator('#six-hour-service').select_option('youtube');assert page.locator('#link-channelUrl').is_visible();page.locator('#link-channelUrl').fill('https://example.com/six-youtube');page.locator('.link-settings .primary-button').click();page.wait_for_timeout(200);assert saved==['12h','6h']
     assert not errors,errors
     browser.close()
-    print('PASS: 3 plan cards, mobile layout, avatar/decorations, 1/3/4 total steps, 49/90 timers, final CAPTCHA then claim on all modes, separate admin link tabs/save; no browser errors')
+    print('PASS: 3 plan cards, mobile layout, avatar/decorations, 2/3/4 total steps, 30/49/90 timers, final CAPTCHA then claim on all modes, separate admin link tabs/save; no browser errors')

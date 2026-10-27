@@ -1,5 +1,6 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "เลือกภารกิจ 6H": "Choose the 6H mission",
   "เลือกอายุคีย์ แล้วทำภารกิจของโหมดที่คุณเลือก": "Choose your key duration and complete its missions.",
   "{steps} ขั้นตอน รวมยืนยันบอท": "{steps} steps including human verification",
   "{seconds} วินาที / ภารกิจลิงก์": "{seconds} seconds / link mission",

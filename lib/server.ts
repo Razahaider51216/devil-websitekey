@@ -27,7 +27,9 @@ export async function config(plan: PlanId | null = null) {
     commentUrl: safeLink(v.COMMENT_VIDEO_URL || ""), likeUrl: safeLink(v.LIKE_VIDEO_URL || ""),
   };
   return { plan, settingsId: override ? settingsId : "links", modeSettingsUpdatedAt: override?.updatedAt ?? null, links, updatedAt: stored?.updatedAt ?? null, waitSeconds: selected?.waitSeconds ?? 30, lifetimeHours: selected?.hours ?? Math.max(1, Math.min(8760, Number(v.PUBLIC_KEY_HOURS) || 24)), steps: [
-    { number: 1, title: "เข้าร่วม Discord", subtitle: "เข้ามาเป็นส่วนหนึ่งของ DEVIL community", service: "DISCORD", url: links.discordUrl },
+    plan === "6h" && links.sixHourService === "youtube"
+      ? { number: 1, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: links.channelUrl }
+      : { number: 1, title: "เข้าร่วม Discord", subtitle: "เข้ามาเป็นส่วนหนึ่งของ DEVIL community", service: "DISCORD", url: links.discordUrl },
     { number: 2, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: links.channelUrl },
     { number: 3, title: "คอมเมนต์วิดีโอล่าสุด", subtitle: "แวะไปทักทายกันใต้คลิปวิดีโอ", service: "COMMENT", url: links.commentUrl || links.videoUrl },
     { number: 4, title: "กดไลค์วิดีโอ", subtitle: "ส่งกำลังใจให้ DEVIL HUB ด้วยหนึ่งไลค์", service: "LIKE", url: links.likeUrl || links.videoUrl },

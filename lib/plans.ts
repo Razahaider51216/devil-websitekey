@@ -1,5 +1,5 @@
 export const plans = [
-  { id: "6h", hours: 6, linkSteps: 0, totalSteps: 1, waitSeconds: 0 },
+  { id: "6h", hours: 6, linkSteps: 1, totalSteps: 2, waitSeconds: 30 },
   { id: "12h", hours: 12, linkSteps: 2, totalSteps: 3, waitSeconds: 49 },
   { id: "24h", hours: 24, linkSteps: 3, totalSteps: 4, waitSeconds: 90 },
 ] as const;

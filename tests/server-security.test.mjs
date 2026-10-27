@@ -123,7 +123,7 @@ test('server security integration',async t=>{
     assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0);
   });
   await t.test('all three plans enforce exact hours, counts, timers and mandatory final CAPTCHA',async()=>{
-    for(const [plan,hours,links,wait] of [['6h',6,0,0],['12h',12,2,49000],['24h',24,3,90000]]){
+    for(const [plan,hours,links,wait] of [['6h',6,1,30000],['12h',12,2,49000],['24h',24,3,90000]]){
       await reset();const b=new Browser();await b.login();
       assert.equal((await b.call('flow')).data.selected,false);
       assert.equal((await b.call('flow/select','POST',{plan:'999h'})).status,400);
@@ -153,5 +153,22 @@ test('server security integration',async t=>{
     assert.equal((await b.call('flow/claim','POST',{})).status,409);
     const config=(await b.call('admin/settings','GET',undefined,auth)).data;assert.equal(config.modes.length,3);
     const bad={...links,discordUrl:'javascript:alert(1)'};assert.equal((await b.call('admin/settings','POST',{plan:'24h',links:bad},auth)).status,400);
+  });
+  await t.test('6H requires one admin-selected Discord or YouTube mission before final CAPTCHA',async()=>{
+    await reset();const b=new Browser();await b.login();const auth={authorization:'Bearer '+env.ADMIN_ACCESS_KEY};
+    const links={discordUrl:'https://discord.gg/six',channelUrl:'https://youtube.com/@six',videoUrl:'',commentUrl:'',likeUrl:'',sixHourService:'youtube'};
+    assert.equal((await b.call('admin/settings','POST',{plan:'6h',links},auth)).status,200);
+    const selected=await b.call('flow/select','POST',{plan:'6h'});
+    assert.equal(selected.data.steps.length,1);assert.equal(selected.data.steps[0].service,'YOUTUBE');assert.equal(selected.data.steps[0].url,links.channelUrl);
+    assert.equal((await b.call('flow/verify','POST',{token:'valid-token'})).status,409);
+    await b.call('flow/open','POST',{step:1});await b.call('flow/return','POST',{step:1});clock+=29999;
+    assert.equal((await b.call('flow/verify','POST',{token:'valid-token'})).status,409);clock++;
+    const current=await b.call('flow');challenge=current.data.turnstile.challenge;captchaAction='devil-key-claim';
+    assert.equal((await b.call('flow/verify','POST',{token:'valid-token'})).data.canClaim,true);
+    assert.equal((await b.call('flow/claim','POST',{})).data.expiresAt-clock,21600000);
+    assert.equal((await b.call('admin/settings','POST',{plan:'6h',links:{...links,sixHourService:'discord'}},auth)).status,200);
+    assert.equal((await b.call('flow')).data.steps[0].url,links.discordUrl);
+    assert.equal((await b.call('admin/settings','POST',{plan:'6h',links:{...links,sixHourService:'invalid'}},auth)).status,400);
+    assert.equal((await b.call('flow/select','POST',{plan:'12h'})).data.steps[0].url,env.DISCORD_URL);
   });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

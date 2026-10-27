@@ -1,5 +1,13 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ยืนยันก่อนเข้าสู่ระบบ Discord": "Verify you are human before signing in with Discord",
+  "เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง": "Sign-in failed. Please try again.",
+  "ติดต่อระบบไม่ได้ กรุณาลองอีกครั้ง": "Service unavailable. Please try again.",
+  "เข้าสู่ระบบด้วย Discord ก่อนรับคีย์ DEVIL HUB": "Sign in with Discord before getting your DEVIL HUB key.",
+  "ใช้เฉพาะข้อมูลโปรไฟล์ ไม่ขอสิทธิ์จัดการเซิร์ฟเวอร์": "Profile information only. No server management permissions.",
+  "แอดมินยังไม่ได้ตั้งค่า Discord Login": "Discord sign-in has not been configured by the administrator.",
+  "เข้าสู่ระบบด้วย Discord": "Sign in with Discord",
+  "เฉพาะแอดมินที่ได้รับอนุญาตเท่านั้น": "Only authorized administrators can access this page.",
   "ฐานข้อมูลถึงโควตารายวัน กรุณาลองใหม่หลัง 07:00 น. (ไทย)": "Daily database quota reached. Please retry after 00:00 UTC (07:00 Bangkok).",
   "ยืนยันว่าไม่ใช่บอท": "Verify you are human", "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา": "Claim your key immediately after verification. No countdown.",
   "ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท": "Human verification has not been configured", "ติดต่อระบบยืนยันไม่สำเร็จ กรุณาลองอีกครั้ง": "Verification service unavailable. Please retry.",

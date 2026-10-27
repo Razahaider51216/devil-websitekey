@@ -25,7 +25,7 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
   ...(directCloudflare ? { name: "devil-websitekey" } : {}),
-  ...(directCloudflare ? { vars: { DATABASE_PROVIDER: directDatabaseProvider, KEY_MAINTENANCE: cloudflareConfig.maintenance ? "1" : "0" } } : {}),
+  ...(directCloudflare ? { vars: { DATABASE_PROVIDER: directDatabaseProvider, KEY_MAINTENANCE: cloudflareConfig.maintenance ? "1" : "0", REQUIRE_TURNSTILE: cloudflareConfig.require_turnstile ? "1" : "0", DISCORD_LOGIN_REQUIRED: cloudflareConfig.discord_login_required ? "1" : "0" } } : {}),
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
   d1_databases: d1

@@ -2,5 +2,7 @@
   "database_id": "a6d4a6f2-6545-45a9-a10f-67e7ebaf02e6",
   "database_provider": "turso",
   "maintenance": false,
-  "turso_import_verified": true
+  "turso_import_verified": true,
+  "require_turnstile": true,
+  "discord_login_required": true
 }

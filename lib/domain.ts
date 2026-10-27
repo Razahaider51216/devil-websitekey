@@ -11,7 +11,7 @@ export function expiry(at: number, duration: Duration) {
 }
 export function stepState(step: { openedAt: number | null; returnedAt: number | null }, now: number) {
   if (step.openedAt === null) return "ready";
-  if (step.returnedAt === null) return "opened";
+  if (step.returnedAt === null || step.returnedAt < step.openedAt) return "opened";
   return now >= step.returnedAt + WAIT_MS ? "done" : "waiting";
 }
 export async function hash(value: string) {

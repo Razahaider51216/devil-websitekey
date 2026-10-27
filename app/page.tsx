@@ -7,13 +7,15 @@ import { KeyCountdown } from "./key-countdown";
 import { remainingKeyTime } from "../lib/countdown";
 import { KeyOutput } from "./key-output";
 import { TurnstileStep } from "./turnstile-step";
+import { DiscordAccess } from "./discord-access";
 type Key = { key: string; expiresAt: number | null; status: string };
 type Step = { number: number; title: string; subtitle: string; service: string; configured: boolean; status: string; deadline: number | null };
 type Bot = { enabled: boolean; configured: boolean; siteKey: string; challenge: string; passed: boolean };
 type Flow = { turnstile?: Bot; serverNow: number; lifetimeHours: number; steps: Step[]; canClaim: boolean; key: Key | null };
 function DiscordIcon() { return <svg viewBox="0 0 24 24" width="23" height="23" fill="currentColor" aria-hidden="true"><path d="M19.7 5.1a18 18 0 00-4.4-1.4l-.6 1.2a16 16 0 00-5.4 0l-.6-1.2a18 18 0 00-4.4 1.4C1.6 9.1.8 13 .9 16.8A18 18 0 006.3 19l1.1-1.8-1.7-.8.4-.3a13.8 13.8 0 0011.8 0l.4.3-1.7.8 1.1 1.8a18 18 0 005.4-2.2c.2-4.5-.8-8.3-3.4-11.7zM8.4 14.2c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm7.2 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/></svg>; }
 const icons = [DiscordIcon, Play, MessageSquare, ThumbsUp];
-export default function Home() {
+export default function Home() { return <DiscordAccess><KeyPortal/></DiscordAccess>; }
+function KeyPortal() {
   const { t, language } = useLanguage();
   const [flow, setFlow] = useState<Flow | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState<number | string | null>(null), [clock, setClock] = useState(Date.now());
   const offset = useRef(0), returning = useRef(false), fresh = useRef<Flow | null>(null);
@@ -46,7 +48,7 @@ export default function Home() {
     catch (e) { tab?.close(); setError((e as Error).message); } finally { setBusy(null); }
   }
   useEffect(() => { if (flow && sessionStorage.getItem("devil-return")) { sessionStorage.removeItem("devil-return"); returned(); } }, [flow, returned]);
-  async function claim() { setBusy("claim"); setError(""); try { const key = await api("flow/claim", { method: "POST", body: "{}" }); apply({ ...flow!, serverNow: Date.now() + offset.current, key }); } catch (e) { setError((e as Error).message); } finally { setBusy(null); } }
+  async function claim() { setBusy("claim"); setError(""); try { const key = await api("flow/claim", { method: "POST", body: "{}" }); apply({ ...flow!, serverNow: Date.now() + offset.current, key }); } catch (e) { await refresh(true); setError((e as Error).message); } finally { setBusy(null); } }
   const keyState = flow?.key ? remainingKeyTime(flow.key.expiresAt, flow.key.status, clock + offset.current).state : null;
   const completed = flow?.steps.filter(s => s.status === "done").length || 0;
   const totalSteps = flow?.turnstile?.enabled ? 5 : 4;

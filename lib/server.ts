@@ -5,9 +5,11 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { expiry, hash, keyFor, safeLink, status, stepState, WAIT_MS, type Duration } from "./domain";
 import { validateLinks, type Links } from "./settings";
 import { verifyTurnstile } from "./turnstile";
+import { readJson, cookieValue, requireOrigin } from "./security";
+import { discordRequired, requireDiscord, requireDiscordAdmin, flowOwner, flowOwnerCookie, handleDiscord } from "./discord-auth";
 
 export const vars = () => env as unknown as Record<string, string>;
-export class HttpError extends Error { constructor(public code: number, message: string) { super(message); } }
+export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
 export function fail(code: number, message: string): never { throw new HttpError(code, message); }
 export function json(value: unknown, code = 200, extra: Record<string,string> = {}) {
   return Response.json(value, { status: code, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra } });
@@ -28,13 +30,10 @@ export async function config() {
   ] };
 }
 export function sameOrigin(req: Request) {
-  if (req.headers.get("origin") !== new URL(req.url).origin) fail(403, "กรุณาทำรายการจากหน้า DEVIL KEY");
+  requireOrigin(req);
 }
 export async function body(req: Request) {
-  if (!req.headers.get("content-type")?.includes("application/json")) fail(415, "ต้องส่งข้อมูลแบบ JSON");
-  if (Number(req.headers.get("content-length")) > 16384) fail(413, "ข้อมูลยาวเกินไป");
-  const text = await req.text(); if (text.length > 16384) fail(413, "ข้อมูลยาวเกินไป");
-  try { const value = JSON.parse(text); if (!value || Array.isArray(value) || typeof value !== "object") throw 0; return value; } catch { fail(400, "ข้อมูลไม่ถูกต้อง"); }
+  return await readJson(req) as { step: number; key: string; hwid: string; links: unknown; kind: Duration["kind"]; amount: number; label: unknown; token: unknown };
 }
 export async function rate(req: Request, kind: string, maximum: number) {
   const now = Date.now(), bucket = Math.floor(now / 60_000);
@@ -48,6 +47,7 @@ export async function rate(req: Request, kind: string, maximum: number) {
 }
 export async function admin(req: Request) {
   await rate(req, "admin", 60);
+  await requireDiscordAdmin(req);
   const secret = vars().ADMIN_ACCESS_KEY;
   if (!secret) fail(503, "ยังไม่ได้ตั้งรหัสแอดมิน");
   if (secret.length < 24) fail(503, "รหัสแอดมินต้องยาวอย่างน้อย 24 ตัวอักษร");
@@ -57,9 +57,12 @@ export async function admin(req: Request) {
   if (difference) fail(401, "รหัสแอดมินไม่ถูกต้อง");
 }
 export async function flow(req: Request, create = false) {
+  const user = await requireDiscord(req);
   const db = getDb(), now = Date.now();
-  const cookie = req.headers.get("cookie")?.match(/(?:^|;\s*)devil_flow=([a-f0-9-]{36})(?:;|$)/)?.[1];
-  let row = cookie ? await db.select().from(flows).where(eq(flows.id, cookie)).get() : undefined;
+  const candidate = cookieValue(req, "devil_flow");
+  const cookie = candidate && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(candidate) ? candidate : undefined;
+  const owned = !user || (cookie && await flowOwner(req, cookie, user.id));
+  let row = cookie && owned ? await db.select().from(flows).where(eq(flows.id, cookie)).get() : undefined;
   let fresh = false;
   if (!row || row.expiresAt <= now) {
     if (!create) fail(401, "เซสชันหมดอายุ กรุณาเริ่มขั้นตอนใหม่");
@@ -67,7 +70,9 @@ export async function flow(req: Request, create = false) {
     row = { id: crypto.randomUUID(), createdAt: now, expiresAt: now + 86_400_000 };
     await db.insert(flows).values(row); fresh = true;
   }
-  return { row, cookie: fresh ? `devil_flow=${row.id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${new URL(req.url).protocol === "https:" ? "; Secure" : ""}` : undefined };
+  const cookies = fresh ? [`devil_flow=${row.id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${new URL(req.url).protocol === "https:" ? "; Secure" : ""}`] : [];
+  if (fresh && user) cookies.push(await flowOwnerCookie(req, row.id, user.id));
+  return { row, cookies };
 }
 export async function state(id: string) {
   const db = getDb(), conf = await config(), now = Date.now();
@@ -81,11 +86,14 @@ export async function state(id: string) {
     result.push({ ...s, configured: !!s.url, status: stepState(step, now), deadline: step.returnedAt === null ? null : step.returnedAt + WAIT_MS });
   }
   const siteKey = vars().TURNSTILE_SITE_KEY || "", secret = vars().TURNSTILE_SECRET_KEY || "";
-  const enabled = !!(siteKey || secret);
+  const enabled = vars().REQUIRE_TURNSTILE === "1" || discordRequired() || !!(siteKey || secret);
   const verified = enabled ? await db.select().from(flowVerifications).where(eq(flowVerifications.flowId, id)).get() : null;
+  const completedAt = Math.max(...rows.filter(r => r.returnedAt !== null).map(r => r.returnedAt! + WAIT_MS), 0);
+  const passed = !!verified && verified.verifiedAt >= completedAt && verified.verifiedAt > now - 300_000;
   return { serverNow: now, lifetimeHours: conf.lifetimeHours, steps: result,
-    turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed: !!verified },
-    canClaim: result.every(s => s.status === "done") && (!enabled || !!verified), key: issued ? await presentKey(issued) : null };
+    configurationUpdatedAt: conf.updatedAt,
+    turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed },
+    canClaim: result.every(s => s.status === "done") && (!enabled || (!!siteKey && !!secret && passed)), key: issued ? await presentKey(issued) : null };
 }
 export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
@@ -93,31 +101,37 @@ export async function presentKey(row: typeof keys.$inferSelect) {
 export async function handle(req: Request, path: string[]) {
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   const db = getDb(), now = Date.now(), route = path.join("/");
+  if (route.startsWith("auth/")) return handleDiscord(req, route, rate);
   if (route === "flow" && req.method === "GET") {
+    await rate(req, "flow-state", 600);
     const session = await flow(req, true);
-    return json(await state(session.row.id), 200, session.cookie ? { "Set-Cookie": session.cookie } : {});
+    const response = json(await state(session.row.id));
+    for (const value of session.cookies) response.headers.append("Set-Cookie", value);
+    return response;
   }
   if ((route === "flow/open" || route === "flow/return") && req.method === "POST") {
     sameOrigin(req); const { step } = await body(req), session = await flow(req);
+    await rate(req, "steps", 600); await rate(req, "step-flow:" + session.row.id, 30);
     if (!Number.isInteger(step) || step < 1 || step > 4) fail(400, "ไม่พบขั้นตอน");
     const current = await state(session.row.id);
     if (current.key) fail(409, "เซสชันนี้ได้รับคีย์แล้ว");
     if (!current.steps.slice(0, step - 1).every(s => s.status === "done")) fail(409, "กรุณาทำขั้นตอนก่อนหน้าให้ครบ");
     const selected = current.steps[step - 1]; if (!selected.url) fail(503, "แอดมินยังไม่ได้ตั้งลิงก์ขั้นตอนนี้");
     const id = `${session.row.id}:${step}`;
+    const mutationTime = Date.now();
     if (route.endsWith("open")) {
-      await db.insert(steps).values({ id, flowId: session.row.id, number: step, openedAt: now, returnedAt: null, linkHash: await hash(selected.url) }).onConflictDoNothing();
+      await db.insert(steps).values({ id, flowId: session.row.id, number: step, openedAt: mutationTime, returnedAt: null, linkHash: await hash(selected.url) }).onConflictDoNothing();
       const existing = await db.select().from(steps).where(eq(steps.id, id)).get();
-      if (existing!.linkHash !== await hash(selected.url)) await db.update(steps).set({ openedAt: now, returnedAt: null, linkHash: await hash(selected.url) }).where(eq(steps.id, id));
+      if (existing!.linkHash !== await hash(selected.url)) await db.update(steps).set({ openedAt: mutationTime, returnedAt: null, linkHash: await hash(selected.url) }).where(eq(steps.id, id));
     } else {
       const existing = await db.select().from(steps).where(eq(steps.id, id)).get();
       if (!existing?.openedAt || existing.linkHash !== await hash(selected.url)) fail(409, "เปิดลิงก์ขั้นตอนนี้ก่อน");
-      await db.update(steps).set({ returnedAt: sql`coalesce(${steps.returnedAt}, ${now})` }).where(eq(steps.id, id));
+      await db.update(steps).set({ returnedAt: sql`case when ${steps.returnedAt} < ${steps.openedAt} then ${mutationTime} else coalesce(${steps.returnedAt}, ${mutationTime}) end` }).where(and(eq(steps.id, id), eq(steps.linkHash, await hash(selected.url))));
     }
     return json({ ...await state(session.row.id), openedUrl: selected.url });
   }
   if (route === "flow/claim" && req.method === "POST") {
-    sameOrigin(req); await rate(req, "claim", 20); const session = await flow(req);
+    sameOrigin(req); await body(req); await rate(req, "claim", 120); const session = await flow(req);
     const current = await state(session.row.id);
     if (current.key) return json(current.key);
     if (!current.canClaim) {
@@ -125,8 +139,17 @@ export async function handle(req: Request, path: string[]) {
       fail(409, "กรุณาทำครบ 4 ขั้นตอนและรอคูลดาวน์");
     }
     const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
-    await db.insert(keys).values({ id, flowId: session.row.id, keyHash: await hash(key), label: "Standard access", source: "steps", createdAt: now, expiresAt: now + current.lifetimeHours * 3_600_000, durationKind: "hours", durationAmount: current.lifetimeHours, revokedAt: null }).onConflictDoNothing();
+    const issuedAt = Date.now();
+    const checks = await Promise.all(current.steps.map(async s => sql`exists (select 1 from steps where flow_id=${session.row.id} and number=${s.number} and id=${session.row.id + ":" + s.number} and link_hash=${await hash(s.url)} and opened_at is not null and returned_at >= opened_at and returned_at <= ${issuedAt - WAIT_MS})`));
+    const human = current.turnstile.enabled ? sql`exists (select 1 from flow_verifications where flow_id=${session.row.id} and verified_at > ${issuedAt - 300_000} and verified_at >= (select max(returned_at) + ${WAIT_MS} from steps where flow_id=${session.row.id}))` : sql`1=1`;
+    // Eligibility and unique issuance are checked by the same database statement.
+    await db.run(sql`insert into access_keys (id,flow_id,key_hash,label,source,created_at,expires_at,revoked_at,duration_kind,duration_amount)
+      select ${id},${session.row.id},${await hash(key)},'Standard access','steps',${issuedAt},${issuedAt + current.lifetimeHours * 3_600_000},null,'hours',${current.lifetimeHours}
+      where exists (select 1 from flows where id=${session.row.id} and expires_at > ${issuedAt})
+      and coalesce((select updated_at from site_settings where id='links'),0)=${current.configurationUpdatedAt ?? 0}
+      and ${sql.join(checks, sql` and `)} and ${human} on conflict(flow_id) do nothing`);
     const row = await db.select().from(keys).where(eq(keys.flowId, session.row.id)).get();
+    if (!row) fail(409, "Steps or verification changed. Please reload and try again.");
     return json(await presentKey(row!));
   }
   if (route === "flow/verify" && req.method === "POST") {
@@ -140,14 +163,17 @@ export async function handle(req: Request, path: string[]) {
     try { valid = await verifyTurnstile(vars().TURNSTILE_SECRET_KEY, token, new URL(req.url).hostname, current.turnstile.challenge); }
     catch { fail(503, "ติดต่อระบบยืนยันไม่สำเร็จ กรุณาลองอีกครั้ง"); }
     if (!valid) fail(400, "กรุณายืนยันว่าไม่ใช่บอทอีกครั้ง");
-    await db.insert(flowVerifications).values({ flowId: session.row.id, verifiedAt: now }).onConflictDoNothing();
+    const verifiedAt = Date.now();
+    await db.insert(flowVerifications).values({ flowId: session.row.id, verifiedAt }).onConflictDoUpdate({ target: flowVerifications.flowId, set: { verifiedAt } });
     return json(await state(session.row.id));
   }
   if (route === "validate" && req.method === "POST") {
-    await rate(req, "validate", 60); const input = await body(req);
+    const input = await body(req);
     if (typeof input.key !== "string" || input.key.length > 100) fail(400, "รูปแบบคีย์ไม่ถูกต้อง");
+    if (!/^DEVIL-(?:[A-F0-9]{8}-){3}[A-F0-9]{8}$/.test(input.key.trim())) return json({ valid: false, status: "invalid", expiresAt: null });
+    await rate(req, "validate", 600); await rate(req, "validate-key:" + await hash(input.key.trim()), 30);
     const row = await db.select().from(keys).where(eq(keys.keyHash, await hash(input.key.trim()))).get();
-    const keyStatus = row ? status(row, now) : "invalid";
+    const keyStatus = row ? status(row, Date.now()) : "invalid";
     if (!row || keyStatus !== "active") return json({ valid: false, status: keyStatus, expiresAt: row?.expiresAt ?? null });
     if (typeof input.hwid !== "string" || input.hwid.trim().length < 8 || input.hwid.length > 512) {
       return json({ valid: false, status: "hwid_required", expiresAt: row.expiresAt });
@@ -156,7 +182,7 @@ export async function handle(req: Request, path: string[]) {
     // A primary key makes simultaneous first-use requests compete for exactly one binding.
     let binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
     if (!binding) {
-      await db.insert(keyDevices).values({ keyId: row.id, hwidHash, boundAt: now }).onConflictDoNothing();
+      await db.insert(keyDevices).values({ keyId: row.id, hwidHash, boundAt: Date.now() }).onConflictDoNothing();
       binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
     }
     const matched = binding?.hwidHash === hwidHash;
@@ -170,8 +196,9 @@ export async function handle(req: Request, path: string[]) {
       const input = await body(req);
       let links: Links;
       try { links = validateLinks(input.links); } catch (error) { fail(400, (error as Error).message); }
-      await db.insert(siteSettings).values({ id: "links", value: JSON.stringify(links), updatedAt: now })
-        .onConflictDoUpdate({ target: siteSettings.id, set: { value: JSON.stringify(links), updatedAt: now } });
+      const updatedAt = Date.now();
+      await db.insert(siteSettings).values({ id: "links", value: JSON.stringify(links), updatedAt })
+        .onConflictDoUpdate({ target: siteSettings.id, set: { value: JSON.stringify(links), updatedAt } });
       return json(await config());
     }
     if (route === "admin/keys" && req.method === "GET") {
@@ -182,9 +209,10 @@ export async function handle(req: Request, path: string[]) {
     if (route === "admin/keys" && req.method === "POST") {
       const input = await body(req); const duration: Duration = { kind: input.kind, amount: input.amount };
       if (!["permanent", "days", "months"].includes(duration.kind)) fail(400, "เลือกรูปแบบอายุคีย์");
-      let ends; try { ends = expiry(now, duration); } catch (e) { fail(400, (e as Error).message); }
+      const createdAt = Date.now();
+      let ends; try { ends = expiry(createdAt, duration); } catch (e) { fail(400, (e as Error).message); }
       const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
-      const row = { id, flowId: null, keyHash: await hash(key), label: String(input.label || "Admin key").slice(0, 80), source: "admin", createdAt: now, expiresAt: ends, revokedAt: null, durationKind: duration.kind, durationAmount: duration.kind === "permanent" ? 0 : duration.amount };
+      const row = { id, flowId: null, keyHash: await hash(key), label: String(input.label || "Admin key").slice(0, 80), source: "admin", createdAt, expiresAt: ends, revokedAt: null, durationKind: duration.kind, durationAmount: duration.kind === "permanent" ? 0 : duration.amount };
       await db.insert(keys).values(row); return json(await presentKey(row), 201);
     }
     if (path[1] === "keys" && path.length === 3 && req.method === "DELETE") {

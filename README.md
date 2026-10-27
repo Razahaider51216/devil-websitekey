@@ -17,7 +17,26 @@ Production now uses **Turso/libSQL** on the existing Cloudflare Worker. Existing
 5. ลง migration ฐานข้อมูล local: `node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --local --config dist/server/wrangler.json --persist-to .wrangler/state`
 6. รัน `npm start -- --port 5184` แล้วเปิด http://127.0.0.1:5184
 
-หลังบ้านอยู่ `/admin` ใช้ค่า ADMIN_ACCESS_KEY จาก `.env` ล็อกอิน คีย์และสถานะเก็บใน D1 จริง
+หลังบ้านอยู่ `/admin` ต้องล็อกอิน Discord ด้วย User ID ที่อยู่ใน `DISCORD_ADMIN_USER_IDS` แล้วใส่ `ADMIN_ACCESS_KEY` อีกครั้ง ผู้ใช้ทั่วไปไม่เห็นเมนู ADMIN และ API ปฏิเสธสิทธิ์ด้วย ฐานข้อมูล production ใช้ Turso; local ใช้ D1
+
+## Discord Login และสิทธิ์แอดมิน
+
+ตั้ง Runtime Variables/Secrets ใน Cloudflare Worker:
+
+- `DISCORD_CLIENT_ID`: Application ID จาก Discord Developer Portal
+- `DISCORD_CLIENT_SECRET`: Client Secret (ชนิด Secret)
+- `DISCORD_ADMIN_USER_IDS`: Discord User ID ของแอดมิน คั่นหลายคนด้วยจุลภาค เช่น `123456789012345678,223456789012345678` ห้ามใส่ชื่อผู้ใช้ ไม่มี ID ที่ตรงหมายถึงไม่มีสิทธิ์หลังบ้าน
+- `TURNSTILE_SITE_KEY` และ `TURNSTILE_SECRET_KEY`: Widget ที่อนุญาต hostname ของเว็บจริง
+- `ADMIN_ACCESS_KEY`: รหัสผ่านแอดมินเดิม ไม่ต้องเปลี่ยน
+- `KEY_SECRET`: เก็บค่าเดิมไว้ เพื่อให้คีย์และ HWID เดิมยังใช้ได้
+
+ตั้ง Discord OAuth2 Redirect URI เป็น `https://devil-websitekey.waeeccvv.workers.dev/api/auth/discord/callback` ใช้ scope `identify` เท่านั้น ไม่มีการขอสิทธิ์บอทหรือจัดการเซิร์ฟเวอร์
+
+production เปิด `DISCORD_LOGIN_REQUIRED=1` และ `REQUIRE_TURNSTILE=1` ผ่าน `cloudflare.config.json` หากตั้งค่าไม่ครบจะปฏิเสธการรับคีย์ ผู้ใช้ต้องยืนยัน Turnstile ก่อนเริ่ม OAuth และทำขั้นตอนรับคีย์บนเซสชันที่ผูกกับบัญชีตัวเอง คุกกี้ล็อกอินหมดอายุใน 8 ชั่วโมง ออกจากระบบจะเพิกถอนเซสชันบนเซิร์ฟเวอร์ด้วย
+
+เวลารอ 30 วินาทีตรวจจากฐานข้อมูลฝั่งเซิร์ฟเวอร์ การสร้างคีย์ตรวจเงื่อนไขและบันทึกใน SQL เดียว และมีคีย์ได้หนึ่งรายการต่อ flow การแก้ JavaScript/ส่งเวลาหรืออายุคีย์เองไม่ให้สิทธิ์เพิ่ม Turnstile ตรวจ hostname, action และ challenge ของเซสชัน OAuth state ใช้ได้ครั้งเดียวและตรวจคุกกี้ที่ลงลายเซ็นก่อนแลก token มีการจำกัดคำขอ ขนาด body และเวลาอ่าน body
+
+การกดลิงก์พร้อมรอเวลาไม่สามารถยืนยันจริงว่าเข้าร่วม Discord หรือกดติดตาม/คอมเมนต์/ไลค์บน YouTube แล้ว ระบบนี้บังคับขั้นตอน เวลา และการยืนยันบอทเท่านั้น ไม่มีระบบที่รับประกันป้องกันช่องโหว่ทุกชนิด API `/api/validate` ยังใช้คีย์และ HWID โดยไม่ต้องล็อกอิน Discord เพื่อรองรับสคริปต์และคีย์เดิม
 
 ## การตั้งค่า
 

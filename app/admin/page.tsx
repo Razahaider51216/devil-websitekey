@@ -6,8 +6,12 @@ import { useLanguage } from "../language";
 import { LinkSettings } from "./link-settings";
 import { KeyCountdown } from "../key-countdown";
 import { remainingKeyTime } from "../../lib/countdown";
+import { DiscordAccess } from "../discord-access";
 type Key = { id: string; key: string; label: string; source: string; createdAt: number; expiresAt: number | null; status: string; kind: string; amount: number };
 export default function Admin() {
+  return <DiscordAccess adminOnly><AdminPanel/></DiscordAccess>;
+}
+function AdminPanel() {
   const { t, language } = useLanguage();
   const [clock, setClock] = useState(Date.now());
   const offset = useRef(0);
@@ -18,8 +22,8 @@ export default function Admin() {
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
   }, []);
   const [token, setToken] = useState(""), [password, setPassword] = useState(""), [data, setData] = useState<any>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false), [kind, setKind] = useState("days"), [amount, setAmount] = useState(30), [label, setLabel] = useState(""), [search, setSearch] = useState(""), [created, setCreated] = useState<Key | null>(null);
-  async function load(value: string) { const response = await api("admin/keys", { headers: { Authorization: `Bearer ${value}` } }); offset.current = response.serverNow - Date.now(); setClock(Date.now()); setData(response); setToken(value); sessionStorage.setItem("devil-admin", value); }
-  useEffect(() => { const value = sessionStorage.getItem("devil-admin"); if (value) load(value).catch(() => sessionStorage.removeItem("devil-admin")); }, []);
+  async function load(value: string) { const response = await api("admin/keys", { headers: { Authorization: `Bearer ${value}` } }); offset.current = response.serverNow - Date.now(); setClock(Date.now()); setData(response); setToken(value); }
+  useEffect(() => { sessionStorage.removeItem("devil-admin"); }, []);
   async function login(e: React.FormEvent) { e.preventDefault(); setBusy(true); setError(""); try { await load(password); setPassword(""); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   async function create(e: React.FormEvent) { e.preventDefault(); setBusy(true); setError(""); try { const key = await api("admin/keys", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ label, kind, amount }) }); setCreated(key); setLabel(""); await load(token); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   async function revoke(key: Key) { if (!window.confirm(t("ยกเลิกคีย์ “{label}”? ผู้ใช้จะไม่สามารถใช้คีย์นี้ต่อได้", { label: key.label }))) return; setBusy(true); setError(""); try { await api(`admin/keys/${key.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); await load(token); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }

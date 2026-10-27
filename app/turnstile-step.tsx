@@ -16,7 +16,7 @@ function loadWidget() {
   });
   return loading;
 }
-export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void> }) {
+export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, action = "devil-key-claim" }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void>; action?: "devil-key-claim" | "devil-key-login" }) {
   const { t, language } = useLanguage();
   const node = useRef<HTMLDivElement>(null), verify = useRef(onVerify);
   verify.current = onVerify;
@@ -27,18 +27,18 @@ export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify }
     setFailed(false);
     loadWidget().then(() => {
       if (cancelled || !node.current || !window.turnstile) return;
-      id = window.turnstile.render(node.current, { sitekey: siteKey, theme: "dark", language, size: "flexible", action: "devil-key-claim", cData: challenge,
+      id = window.turnstile.render(node.current, { sitekey: siteKey, theme: "dark", language, size: "flexible", action, cData: challenge,
         callback: (token: string) => { verify.current(token).catch(() => { if (!cancelled && id) window.turnstile?.reset(id); }); },
         "error-callback": () => { if (!cancelled) setFailed(true); },
         "expired-callback": () => { if (!cancelled && id) window.turnstile?.reset(id); },
       });
     }).catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; if (id) window.turnstile?.remove(id); };
-  }, [siteKey, challenge, passed, unlocked, language, retry]);
+  }, [siteKey, challenge, passed, unlocked, language, retry, action]);
   return <article className={`bot-step ${passed ? "step-done" : ""}`}>
-    <div className="eyebrow">STEP 05 / <ShieldCheck size={14}/></div>
+    <div className="eyebrow">{action === "devil-key-login" ? "SECURITY CHECK" : "STEP 05"} / <ShieldCheck size={14}/></div>
     <h3>{t("ยืนยันว่าไม่ใช่บอท")}</h3>
-    <p>{t("ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
+    <p>{t(action === "devil-key-login" ? "ยืนยันก่อนเข้าสู่ระบบ Discord" : "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
     {passed ? <span className="done-label"><Check size={14}/>{t("เรียบร้อย")}</span> : !unlocked ? <span className="private-note"><LockKeyhole size={14}/>{t("กรุณาทำขั้นตอนก่อนหน้าให้ครบ")}</span> : !siteKey ? <p>{t("ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท")}</p> : <div ref={node}/>}
     {failed && <button type="button" className="quiet-button" onClick={() => setRetry(v => v + 1)}>{t("ลองอีกครั้ง")}</button>}
   </article>;

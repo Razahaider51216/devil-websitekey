@@ -1,5 +1,7 @@
 # DEVIL KEY
 
+Production now uses **Turso/libSQL** on the existing Cloudflare Worker. Existing keys, expiry, revocations and HWID bindings were preserved. See [migration notes](TURSO-MIGRATION.md); D1 setup below remains available for local development.
+
 เว็บรับคีย์ DEVIL HUB ธีมดำ–แดง พร้อม 4 ขั้นตอนและหลังบ้านแอดมิน
 
 **เปิดบน Cloudflare:** ดู [คู่มือ Cloudflare Workers + D1](CLOUDFLARE.md) มีคำสั่ง build/deploy และรายการ Variables/Secrets ครบ

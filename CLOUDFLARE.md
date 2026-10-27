@@ -1,6 +1,10 @@
 # เปิด DEVIL KEY บน Cloudflare Workers
 
-เว็บนี้มี API และฐานข้อมูล ใช้ **Workers + D1**
+เว็บนี้มี API และฐานข้อมูล ใช้ **Cloudflare Workers + Turso (libSQL)** ใน production ปัจจุบัน
+
+ย้ายจาก D1 เมื่อ 27 ต.ค. 2026 โดยตรวจเทียบครบ 7 ตารางก่อนสลับ รวมคีย์ 318 รายการและ HWID 167 รายการ เก็บ `KEY_SECRET` เดิมและ D1 เดิมไว้ ค่าผู้ให้บริการอยู่ใน `cloudflare.config.json`; ต้องมี runtime `TURSO_DATABASE_URL` และ Secret `TURSO_AUTH_TOKEN` ดูขั้นตอนย้ายและข้อจำกัดการย้อนกลับใน [TURSO-MIGRATION.md](TURSO-MIGRATION.md)
+
+ขั้นตอน D1 ด้านล่างใช้สำหรับติดตั้ง D1 ใหม่หรือพัฒนา local เท่านั้น ไม่ต้องลง migration D1 เพื่อ deploy production ที่ย้ายแล้ว
 
 ## 1. สร้างฐานข้อมูล
 

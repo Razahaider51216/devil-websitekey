@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readJson, seal, unseal, cookieValue, cookie, requireOrigin } from '../lib/security.ts';
-import { authorizationUrl, discordIdentity } from '../lib/discord-domain.ts';
+import { authorizationUrl, discordIdentity, discordMedia } from '../lib/discord-domain.ts';
 const secret = 'test-secret-only-'.repeat(3);
 test('signed cookies reject tampering, wrong purpose, wrong key and expiry', async () => {
   const signed = await seal({ id: '123' }, 'session', secret, 1000, 10000);
@@ -36,6 +36,14 @@ test('Discord requests only identify and keeps tokens server side', async () => 
     if(calls===1){assert.equal(options.body.get('grant_type'),'authorization_code');return Response.json({access_token:'secret-token',token_type:'Bearer'});}
     assert.equal(options.headers.Authorization,'Bearer secret-token');return Response.json({id:'123456789012345678',username:'tester',global_name:'Name'});
   });
-  assert.deepEqual(user,{id:'123456789012345678',name:'Name'});assert.equal(calls,2);
+  assert.deepEqual(user,{id:'123456789012345678',name:'Name',avatar:null,decoration:null,discriminator:'0'});assert.equal(calls,2);
   await assert.rejects(discordIdentity('code','123','secret','https://example.test/',async()=>Response.json({error:'invalid_grant'},{status:400})));
+});
+test('Discord media uses trusted CDN assets, animated avatars and real decorations', () => {
+  const avatar='a_'+'a'.repeat(32),frame='a_'+'b'.repeat(32);
+  const media=discordMedia('123456789012345678',avatar,frame);
+  assert.match(media.avatarUrl,/^https:\/\/cdn\.discordapp\.com\/avatars\/123456789012345678\/a_a+\.gif\?size=128$/);
+  assert.match(media.decorationUrl,/\/avatar-decoration-presets\/a_b+\.png\?size=160$/);
+  const fallback=discordMedia('123456789012345678','https://evil.test/image','../../evil','1234');
+  assert.equal(fallback.avatarUrl,'https://cdn.discordapp.com/embed/avatars/4.png');assert.equal(fallback.decorationUrl,null);
 });

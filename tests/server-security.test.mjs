@@ -81,13 +81,13 @@ test('server security integration',async t=>{
     const stolen=new Browser();stolen.jar=new Map(b.jar);await b.call('auth/logout','POST',{});assert.equal((await stolen.call('flow')).status,401);
   });
   await t.test('sequential server timers, account ownership, captcha freshness and atomic issuance',async()=>{
-    await reset();const b=new Browser();await b.login();await b.call('flow');
+    await reset();const b=new Browser();await b.login();await b.call('flow/select','POST',{plan:'24h'});
     assert.equal((await b.call('flow/claim','POST',{canClaim:true,expiresAt:null})).status,409);
-    assert.equal((await b.call('flow/open','POST',{step:4})).status,409);
-    for(let step=1;step<=4;step++){
+    assert.equal((await b.call('flow/open','POST',{step:4})).status,400);
+    for(let step=1;step<=3;step++){
       assert.equal((await b.call('flow/open','POST',{step,now:clock-999999})).status,200);
       assert.equal((await b.call('flow/return','POST',{step,returnedAt:clock-999999})).data.steps[step-1].status,'waiting');
-      clock+=29999;assert.equal((await b.call('flow/claim','POST',{})).status,409);clock++;
+      clock+=89999;assert.equal((await b.call('flow/claim','POST',{})).status,409);clock++;
     }
     const s=await b.call('flow');challenge=s.data.turnstile.challenge;captchaAction='devil-key-claim';
     assert.equal((await b.call('flow/claim','POST',{})).status,409);
@@ -109,17 +109,49 @@ test('server security integration',async t=>{
     env.TURNSTILE_SECRET_KEY='';assert.equal((await a.call('flow')).status,503);
   });
   await t.test('slow return body cannot backdate cooldown and stale CAPTCHA cannot issue a key',async()=>{
-    await reset();const b=new Browser();await b.login();await b.call('flow');
+    await reset();const b=new Browser();await b.login();await b.call('flow/select','POST',{plan:'24h'});
     let release;const body=new ReadableStream({start(c){release=()=>{c.enqueue(new TextEncoder().encode('{"step":1}'));c.close();};}});
     const delayed=new Request(origin+'/api/flow/return',{method:'POST',headers:{origin,'cf-connecting-ip':b.ip,'content-type':'application/json',cookie:[...b.jar].map(([k,v])=>k+'='+v).join('; ')},body,duplex:'half'});
     const pending=handle(delayed,['flow','return']);clock+=60000;
     await b.call('flow/open','POST',{step:1});clock+=60000;release();
     assert.equal((await (await pending).json()).steps[0].status,'waiting');
     const row=(await client.execute('select returned_at from steps where number=1')).rows[0];assert.equal(row.returned_at,clock);
-    clock+=30000;
-    for(let step=2;step<=4;step++){await b.call('flow/open','POST',{step});await b.call('flow/return','POST',{step});clock+=30000;}
+    clock+=90000;
+    for(let step=2;step<=3;step++){await b.call('flow/open','POST',{step});await b.call('flow/return','POST',{step});clock+=90000;}
     const s=await b.call('flow');challenge=s.data.turnstile.challenge;captchaAction='devil-key-claim';await b.call('flow/verify','POST',{token:'valid-token'});
-    clock+=300001;assert.equal((await b.call('flow/claim','POST',{})).status,409);
+    clock+=900001;assert.equal((await b.call('flow/claim','POST',{})).status,409);
     assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0);
+  });
+  await t.test('all three plans enforce exact hours, counts, timers and mandatory final CAPTCHA',async()=>{
+    for(const [plan,hours,links,wait] of [['6h',6,0,0],['12h',12,2,49000],['24h',24,3,90000]]){
+      await reset();const b=new Browser();await b.login();
+      assert.equal((await b.call('flow')).data.selected,false);
+      assert.equal((await b.call('flow/select','POST',{plan:'999h'})).status,400);
+      const selected=await b.call('flow/select','POST',{plan,hours:9999,waitSeconds:0});
+      assert.equal(selected.data.lifetimeHours,hours);assert.equal(selected.data.steps.length,links);assert.equal(selected.data.waitSeconds,wait/1000);
+      assert.equal((await b.call('flow/claim','POST',{plan:'24h',canClaim:true})).status,409);
+      for(let step=1;step<=links;step++){
+        await b.call('flow/open','POST',{step});const returned=await b.call('flow/return','POST',{step,returnedAt:0});
+        assert.equal(returned.data.steps[step-1].deadline-clock,wait);
+        clock+=wait-1;assert.equal((await b.call('flow/verify','POST',{token:'valid-token'})).status,409);clock++;
+      }
+      const state=await b.call('flow');challenge=state.data.turnstile.challenge;captchaAction='devil-key-claim';
+      assert.equal((await b.call('flow/claim','POST',{})).status,409);
+      const verified=await b.call('flow/verify','POST',{token:'valid-token'});assert.equal(verified.data.canClaim,true);
+      const created=await b.call('flow/claim','POST',{plan:'24h',kind:'permanent',amount:999});
+      assert.equal(created.status,200);assert.equal(created.data.expiresAt-clock,hours*3600000);
+      assert.equal((await b.call('flow/select','POST',{plan})).data.key.key,created.data.key);
+    }
+  });
+  await t.test('mode switching cannot carry progress; links are configured independently by admin',async()=>{
+    await reset();const b=new Browser();await b.login();const auth={authorization:'Bearer '+env.ADMIN_ACCESS_KEY};
+    const links={discordUrl:'https://discord.gg/mode12',channelUrl:'https://youtube.com/@mode12',videoUrl:'',commentUrl:'',likeUrl:''};
+    assert.equal((await b.call('admin/settings','POST',{plan:'12h',links},auth)).status,200);
+    const selected=await b.call('flow/select','POST',{plan:'12h'});assert.equal(selected.data.steps[0].url,links.discordUrl);
+    await b.call('flow/open','POST',{step:1});await b.call('flow/return','POST',{step:1});clock+=49000;
+    const changed=await b.call('flow/select','POST',{plan:'24h'});assert.equal(changed.data.steps[0].status,'ready');assert.notEqual(changed.data.steps[0].url,links.discordUrl);
+    assert.equal((await b.call('flow/claim','POST',{})).status,409);
+    const config=(await b.call('admin/settings','GET',undefined,auth)).data;assert.equal(config.modes.length,3);
+    const bad={...links,discordUrl:'javascript:alert(1)'};assert.equal((await b.call('admin/settings','POST',{plan:'24h',links:bad},auth)).status,400);
   });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

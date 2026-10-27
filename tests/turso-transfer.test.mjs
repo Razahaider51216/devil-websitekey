@@ -9,7 +9,7 @@ import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 async function fixture() {
   const db = createClient({ url: ':memory:' });
   for (const file of readdirSync('drizzle').filter(n => n.endsWith('.sql')).sort()) await db.executeMultiple(readFileSync('drizzle/' + file, 'utf8'));
-  await db.execute("INSERT INTO flows VALUES ('flow',1,9999999999999)");
+  await db.execute("INSERT INTO flows (id,created_at,expires_at) VALUES ('flow',1,9999999999999)");
   await db.execute("INSERT INTO access_keys VALUES ('permanent','flow','hash-original','Original','public',1,NULL,NULL,'permanent',0)");
   await db.execute("INSERT INTO access_keys VALUES ('revoked',NULL,'hash-revoked','Revoked','admin',1,9999999999999,100,'days',3)");
   await db.execute("INSERT INTO key_devices VALUES ('permanent','same-hwid-hash',50)");

@@ -1,6 +1,7 @@
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 export const flows = sqliteTable("flows", {
   id: text("id").primaryKey(), createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(),
+  plan: text("plan"),
 });
 export const steps = sqliteTable("steps", {
   id: text("id").primaryKey(), flowId: text("flow_id").notNull().references(() => flows.id),

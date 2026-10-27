@@ -3,7 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "../db";
 import { limits } from "../db/schema";
 import { hash } from "./domain";
-import { authorizationUrl, discordIdentity } from "./discord-domain";
+import { authorizationUrl, discordIdentity, discordMedia } from "./discord-domain";
 import { cookie, cookieName, cookieValue, readJson, RequestError, requireOrigin, seal, unseal } from "./security";
 import { verifyTurnstile } from "./turnstile";
 
@@ -12,7 +12,7 @@ export function discordRequired() { return v().DISCORD_LOGIN_REQUIRED === "1"; }
 const configured = () => /^\d{15,22}$/.test(v().DISCORD_CLIENT_ID || "") && !!v().DISCORD_CLIENT_SECRET && !!v().TURNSTILE_SITE_KEY && !!v().TURNSTILE_SECRET_KEY;
 const secret = () => v().KEY_SECRET || "";
 const read = (req: Request, name: string, purpose: string) => unseal(cookieValue(req, cookieName(req, name)), purpose, secret());
-export type DiscordUser = { id: string; name: string; session: string };
+export type DiscordUser = { id: string; name: string; session: string; avatar?: unknown; decoration?: unknown; discriminator?: unknown };
 export function isDiscordAdmin(id: string) {
   return (v().DISCORD_ADMIN_USER_IDS || "").split(/[\s,]+/).filter(value => /^\d{15,22}$/.test(value)).includes(id);
 }
@@ -26,7 +26,7 @@ export async function discordUser(req: Request): Promise<DiscordUser | null> {
   const data = await read(req, "devil_auth", "discord-session");
   if (!data || typeof data.id !== "string" || !/^\d{15,22}$/.test(data.id) || typeof data.name !== "string" || typeof data.session !== "string") return null;
   const record = await getDb().select().from(limits).where(eq(limits.id, "discord-session:" + await hash(data.session))).get();
-  return record && record.hits === 0 && record.expiresAt > Date.now() ? { id: data.id, name: data.name, session: data.session } : null;
+  return record && record.hits === 0 && record.expiresAt > Date.now() ? { id: data.id, name: data.name, session: data.session, avatar: data.avatar, decoration: data.decoration, discriminator: data.discriminator } : null;
 }
 export async function requireDiscord(req: Request) {
   if (!discordRequired()) return null;
@@ -52,7 +52,7 @@ export async function handleDiscord(req: Request, route: string, rate: (req: Req
   if (route === "auth/session" && req.method === "GET") {
     if (!discordRequired()) return response({ required: false, user: null });
     const ready = configured(), user = ready ? await discordUser(req) : null;
-    if (user) return response({ required: true, configured: true, user: { id: user.id, name: user.name, isAdmin: isDiscordAdmin(user.id) } });
+    if (user) return response({ required: true, configured: true, user: { id: user.id, name: user.name, isAdmin: isDiscordAdmin(user.id), ...discordMedia(user.id, user.avatar, user.decoration, user.discriminator) } });
     await rate(req, "login-page", 60);
     let pending = await read(req, "devil_login", "login-captcha"); const cookies: string[] = [];
     if (!pending || typeof pending.nonce !== "string") {

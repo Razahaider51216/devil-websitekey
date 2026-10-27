@@ -9,10 +9,10 @@ export function expiry(at: number, duration: Duration) {
   const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
   date.setUTCDate(Math.min(day, end)); return date.getTime();
 }
-export function stepState(step: { openedAt: number | null; returnedAt: number | null }, now: number) {
+export function stepState(step: { openedAt: number | null; returnedAt: number | null }, now: number, waitMs = WAIT_MS) {
   if (step.openedAt === null) return "ready";
   if (step.returnedAt === null || step.returnedAt < step.openedAt) return "opened";
-  return now >= step.returnedAt + WAIT_MS ? "done" : "waiting";
+  return now >= step.returnedAt + waitMs ? "done" : "waiting";
 }
 export async function hash(value: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))), b => b.toString(16).padStart(2, "0")).join("");

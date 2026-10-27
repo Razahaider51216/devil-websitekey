@@ -1,5 +1,17 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "เลือกอายุคีย์ แล้วทำภารกิจของโหมดที่คุณเลือก": "Choose your key duration and complete its missions.",
+  "{steps} ขั้นตอน รวมยืนยันบอท": "{steps} steps including human verification",
+  "{seconds} วินาที / ภารกิจลิงก์": "{seconds} seconds / link mission",
+  "ผ่านบอทแล้วรับคีย์ได้ทันที": "Verify you are human and claim instantly",
+  "คีย์ผูกเครื่องที่ใช้ครั้งแรก": "Bound to the first device used",
+  "เลือก {hours}H": "Choose {hours}H",
+  "เปลี่ยนโหมดจะเริ่มภารกิจใหม่ คีย์ที่รับแล้วจะยังใช้งานได้จนหมดอายุ": "Switching plans starts new missions. Issued keys remain valid until expiry.",
+  "ดูคีย์ล่าสุด": "View your latest key",
+  "เลือกโหมดคีย์": "Choose a key plan",
+  "กลับมารอ {seconds} วินาทีต่อภารกิจลิงก์": "Return and wait {seconds} seconds for each link mission.",
+  "6H มีเฉพาะยืนยันบอท รับคีย์ได้ทันที ไม่ต้องตั้งลิงก์": "6H requires human verification only. Instant key; no links to configure.",
+  "{steps} ภารกิจลิงก์ · รอ {seconds} วินาทีต่อภารกิจ + ยืนยันบอท": "{steps} link missions · wait {seconds} seconds each + human verification",
   "ยืนยันก่อนเข้าสู่ระบบ Discord": "Verify you are human before signing in with Discord",
   "เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง": "Sign-in failed. Please try again.",
   "ติดต่อระบบไม่ได้ กรุณาลองอีกครั้ง": "Service unavailable. Please try again.",

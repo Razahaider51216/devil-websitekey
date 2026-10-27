@@ -16,7 +16,7 @@ function loadWidget() {
   });
   return loading;
 }
-export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, action = "devil-key-claim" }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void>; action?: "devil-key-claim" | "devil-key-login" }) {
+export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, action = "devil-key-claim", stepNumber = 5 }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void>; action?: "devil-key-claim" | "devil-key-login"; stepNumber?: number }) {
   const { t, language } = useLanguage();
   const node = useRef<HTMLDivElement>(null), verify = useRef(onVerify);
   verify.current = onVerify;
@@ -36,7 +36,7 @@ export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, 
     return () => { cancelled = true; if (id) window.turnstile?.remove(id); };
   }, [siteKey, challenge, passed, unlocked, language, retry, action]);
   return <article className={`bot-step ${passed ? "step-done" : ""}`}>
-    <div className="eyebrow">{action === "devil-key-login" ? "SECURITY CHECK" : "STEP 05"} / <ShieldCheck size={14}/></div>
+    <div className="eyebrow">{action === "devil-key-login" ? "SECURITY CHECK" : `STEP ${String(stepNumber).padStart(2, "0")}`} / <ShieldCheck size={14}/></div>
     <h3>{t("ยืนยันว่าไม่ใช่บอท")}</h3>
     <p>{t(action === "devil-key-login" ? "ยืนยันก่อนเข้าสู่ระบบ Discord" : "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
     {passed ? <span className="done-label"><Check size={14}/>{t("เรียบร้อย")}</span> : !unlocked ? <span className="private-note"><LockKeyhole size={14}/>{t("กรุณาทำขั้นตอนก่อนหน้าให้ครบ")}</span> : !siteKey ? <p>{t("ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท")}</p> : <div ref={node}/>}

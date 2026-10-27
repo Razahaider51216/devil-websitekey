@@ -5,12 +5,17 @@ import { Header, Footer, api, AdminVisibility } from "./components";
 import { TurnstileStep } from "./turnstile-step";
 import { useLanguage } from "./language";
 import { DiscordProfile, type Profile } from "./discord-profile";
+import { loginFailureCode } from "../lib/login-failure";
 type Session = { required: boolean; configured?: boolean; siteKey?: string; challenge?: string; user?: Profile | null };
 export function DiscordAccess({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { t } = useLanguage();
   const [session, setSession] = useState<Session | null>(null), [error, setError] = useState(""), [token, setToken] = useState(""), [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
-    try { setSession(await api("auth/session")); setError(new URLSearchParams(window.location.search).has("login") ? t("เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง") : ""); }
+    try {
+      const current = await api("auth/session"); setSession(current);
+      const query = new URLSearchParams(window.location.search);
+      setError(!current.user && query.get("login") === "failed" ? t("เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง") + (query.has("reason") ? ` [${loginFailureCode(query.get("reason"))}]` : "") : "");
+    }
     catch { setError(t("ติดต่อระบบไม่ได้ กรุณาลองอีกครั้ง")); }
   }, [t]);
   useEffect(() => { refresh(); }, [refresh]);

@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readJson, seal, unseal, cookieValue, cookie, requireOrigin } from '../lib/security.ts';
-import { authorizationUrl, discordIdentity, discordMedia } from '../lib/discord-domain.ts';
+import { registerHooks } from 'node:module';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+registerHooks({resolve(specifier,context,next){
+  if(specifier.startsWith('.') && context.parentURL?.startsWith('file:')) {
+    const url=new URL(specifier,context.parentURL);
+    if(!existsSync(fileURLToPath(url)) && existsSync(fileURLToPath(url)+'.ts'))return next(url.href+'.ts',context);
+  }
+  return next(specifier,context);
+}});
+const { authorizationUrl, discordIdentity, discordMedia } = await import('../lib/discord-domain.ts');
 const secret = 'test-secret-only-'.repeat(3);
 test('signed cookies reject tampering, wrong purpose, wrong key and expiry', async () => {
   const signed = await seal({ id: '123' }, 'session', secret, 1000, 10000);
@@ -46,4 +56,15 @@ test('Discord media uses trusted CDN assets, animated avatars and real decoratio
   assert.match(media.decorationUrl,/\/avatar-decoration-presets\/a_b+\.png\?size=160$/);
   const fallback=discordMedia('123456789012345678','https://evil.test/image','../../evil','1234');
   assert.equal(fallback.avatarUrl,'https://cdn.discordapp.com/embed/avatars/4.png');assert.equal(fallback.decorationUrl,null);
+});
+
+
+test('Discord login diagnostics classify upstream errors without exposing response bodies',async()=>{
+  for(const [status,error,expected] of [[401,'invalid_client','DISCORD_CLIENT_INVALID'],[400,'invalid_grant','DISCORD_GRANT_INVALID'],[429,'rate_limited','DISCORD_RATE_LIMIT'],[500,'private-value','DISCORD_TOKEN_FAILED']]) {
+    await assert.rejects(discordIdentity('secret-code','123','secret-client','https://devil-hub.dev/api/auth/discord/callback',async()=>Response.json({error,error_description:'private upstream details'},{status})),e=>e.code===expected && !e.message.includes('private'));
+  }
+  await assert.rejects(discordIdentity('code','123','secret','https://devil-hub.dev/api/auth/discord/callback',async()=>{throw new Error('private network details');}),e=>e.code==='DISCORD_NETWORK_FAILED');
+  const {loginFailureCode}=await import('../lib/login-failure.ts');
+  assert.equal(loginFailureCode('<script>'),'LOGIN_UNAVAILABLE');
+  assert.equal(loginFailureCode('DISCORD_CLIENT_INVALID'),'DISCORD_CLIENT_INVALID');
 });

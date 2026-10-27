@@ -64,20 +64,20 @@ test('server security integration',async t=>{
     captchaAction='devil-key-login';const start=await b.call('auth/discord/start','POST',{token:'valid-token'});
     const state=new URL(start.data.url).searchParams.get('state');
     const oauthCookie=b.jar.get('__Host-devil_oauth');
-    assert.equal((await b.call('auth/discord/callback?state=wrong&code=code')).headers.get('location'),'/?login=failed');
+    assert.equal((await b.call('auth/discord/callback?state=wrong&code=code')).headers.get('location'),'/?login=failed&reason=LOGIN_STATE_MISMATCH');
     b.jar.set('__Host-devil_oauth',oauthCookie);
     const callbacks=await Promise.all([b.call('auth/discord/callback?state='+state+'&code=code'),b.call('auth/discord/callback?state='+state+'&code=code')]);
     assert.equal(callbacks.filter(r=>r.headers.get('location')==='/').length,1);assert.equal(exchanges,1);
     assert.equal((await b.call('auth/session')).data.user.isAdmin,true);
     const exchangeCount=exchanges;
     b.jar.set('__Host-devil_oauth',oauthCookie);
-    assert.equal((await b.call('auth/discord/callback?state='+state+'&code=code')).headers.get('location'),'/?login=failed');
+    assert.match((await b.call('auth/discord/callback?state='+state+'&code=code')).headers.get('location'),/^\/\?login=failed&reason=LOGIN_[A-Z_]+$/);
     assert.equal(exchanges,exchangeCount);
     assert.equal((await b.call('admin/keys')).status,401);
     assert.equal((await b.call('admin/keys','GET',undefined,{authorization:'Bearer '+env.ADMIN_ACCESS_KEY})).status,200);
     const other=new Browser();await other.login('223456789012345678');assert.equal((await other.call('auth/session')).data.user.isAdmin,false);
     assert.equal((await other.call('admin/keys','GET',undefined,{authorization:'Bearer '+env.ADMIN_ACCESS_KEY})).status,403);
-    const replay=await b.call('auth/discord/callback?state='+state+'&code=code');assert.equal(replay.headers.get('location'),'/?login=failed');
+    const replay=await b.call('auth/discord/callback?state='+state+'&code=code');assert.match(replay.headers.get('location'),/^\/\?login=failed&reason=LOGIN_[A-Z_]+$/);
     const stolen=new Browser();stolen.jar=new Map(b.jar);await b.call('auth/logout','POST',{});assert.equal((await stolen.call('flow')).status,401);
   });
   await t.test('sequential server timers, account ownership, captcha freshness and atomic issuance',async()=>{
@@ -225,5 +225,22 @@ test('server security integration',async t=>{
     await b.call('admin/keys/'+created.id,'DELETE',{},auth);assert.equal((await get()).status,403);
     delete env.SCRIPT_FILES;assert.equal((await b.call('admin/scripts','GET',undefined,auth)).data.configured,false);
     assert.equal((await b.call('admin/scripts/anime-dice','GET',undefined,auth)).status,503);
+  });
+
+  await t.test('OAuth callback reports safe categories and preserves state/cookie checks on the new domain',async()=>{
+    await reset();const b=new Browser();
+    assert.equal((await b.call('auth/discord/callback?state=missing&code=secret-code')).headers.get('location'),'/?login=failed&reason=LOGIN_COOKIE_MISSING');
+    const current=await b.call('auth/session');challenge=current.data.challenge;captchaAction='devil-key-login';
+    const start=await b.call('auth/discord/start','POST',{token:'valid-token'});const state=new URL(start.data.url).searchParams.get('state');
+    const saved=globalThis.fetch, logs=[], warn=console.warn;
+    console.warn=(...args)=>logs.push(args.join(' '));
+    try {
+      globalThis.fetch=async()=>Response.json({error:'invalid_client',error_description:'private details must not be exposed'},{status:401});
+      const callback=await b.call('auth/discord/callback?state='+state+'&code=secret-code');
+      assert.equal(callback.headers.get('location'),'/?login=failed&reason=DISCORD_CLIENT_INVALID');
+      assert.equal(logs.at(-1),'DEVIL KEY Discord login failed DISCORD_CLIENT_INVALID');
+      assert(!logs.join(' ').includes('secret-code'));assert(!logs.join(' ').includes(state));assert(!logs.join(' ').includes('private details'));
+      assert.equal((await b.call('auth/session')).data.user,null);
+    } finally {globalThis.fetch=saved;console.warn=warn;}
   });
 }).finally(()=>{Date.now=realNow;globalThis.fetch=realFetch;client?.close();});

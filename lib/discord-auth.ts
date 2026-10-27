@@ -6,6 +6,8 @@ import { hash } from "./domain";
 import { authorizationUrl, discordIdentity, discordMedia } from "./discord-domain";
 import { cookie, cookieName, cookieValue, readJson, RequestError, requireOrigin, seal, unseal } from "./security";
 import { verifyTurnstile } from "./turnstile";
+import { DiscordLoginError, loginFailureCode } from "./login-failure";
+import { serviceErrorCode } from "./service-errors";
 
 const v = () => env as unknown as Record<string, string>;
 export function discordRequired() { return v().DISCORD_LOGIN_REQUIRED === "1"; }
@@ -77,20 +79,29 @@ export async function handleDiscord(req: Request, route: string, rate: (req: Req
   if (route === "auth/discord/callback" && req.method === "GET") {
     await rate(req, "discord-callback", 20);
     const clear = cookie(req, "devil_oauth", "", 0);
+    let failure = "LOGIN_CONFIG";
     try {
       if (!discordRequired() || !configured()) throw 0;
       const url = new URL(req.url), data = await read(req, "devil_oauth", "discord-state");
       const state = url.searchParams.get("state"), code = url.searchParams.get("code");
-      if (!data || typeof state !== "string" || state !== data.state || !code || url.searchParams.has("error")) throw 0;
+      if (url.searchParams.has("error")) { failure = "LOGIN_CANCELLED"; throw 0; }
+      if (!data) { failure = "LOGIN_COOKIE_MISSING"; throw 0; }
+      if (typeof state !== "string" || state !== data.state || !code) { failure = "LOGIN_STATE_MISMATCH"; throw 0; }
+      failure = "LOGIN_UNAVAILABLE";
       // Consume the state atomically before talking to Discord; replay/races lose.
       const consumed = await getDb().update(limits).set({ hits: 1 }).where(and(eq(limits.id, "discord-state:" + await hash(state)), eq(limits.hits, 0), gt(limits.expiresAt, Date.now()))).returning({ id: limits.id });
-      if (consumed.length !== 1) throw 0;
+      if (consumed.length !== 1) { failure = "LOGIN_STATE_EXPIRED"; throw 0; }
       const user = await discordIdentity(code, v().DISCORD_CLIENT_ID, v().DISCORD_CLIENT_SECRET, redirectUri(req));
       const session = crypto.randomUUID();
       await getDb().insert(limits).values({ id: "discord-session:" + await hash(session), hits: 0, expiresAt: Date.now() + 28_800_000 });
       const token = await seal({ ...user, session }, "discord-session", secret(), 28_800_000);
       return response(null, [clear, cookie(req, "devil_auth", token, 28800)], 302, { Location: "/" });
-    } catch { return response(null, [clear], 302, { Location: "/?login=failed" }); }
+    } catch (error) {
+      const category = error instanceof DiscordLoginError ? error.code : error instanceof Error ? serviceErrorCode(error) : failure;
+      const reason = loginFailureCode(category === "SERVICE_UNAVAILABLE" ? failure : category);
+      console.warn("DEVIL KEY Discord login failed", reason);
+      return response(null, [clear], 302, { Location: "/?login=failed&reason=" + reason });
+    }
   }
   if (route === "auth/logout" && req.method === "POST") {
     requireOrigin(req); await rate(req, "logout", 20); const user = await discordUser(req);

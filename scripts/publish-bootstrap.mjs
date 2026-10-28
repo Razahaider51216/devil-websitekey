@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 const file = resolve(process.argv[2]);
 const bytes = readFileSync(file), audit = JSON.parse(readFileSync(join(dirname(file), "bootstrap-audit.json"), "utf8"));
 const digest = createHash("sha256").update(bytes).digest("hex");
-if (digest !== audit.sha256 || bytes.length !== audit.bytes || audit.release !== "private-runtime-domain-20261028-3") throw new Error("Bootstrap build audit does not match");
+if (digest !== audit.sha256 || bytes.length !== audit.bytes || audit.release !== "private-runtime-domain-20261028-4") throw new Error("Bootstrap build audit does not match");
 const configuration = JSON.parse(readFileSync("cloudflare.config.json", "utf8"));
 const value = readFileSync(".env.cloudflare.local", "utf8").match(/^\s*CLOUDFLARE_API_TOKEN\s*=\s*(.+?)\s*$/m)?.[1];
 if (!value) throw new Error("Missing Cloudflare token");

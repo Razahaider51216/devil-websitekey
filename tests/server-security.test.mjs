@@ -305,7 +305,8 @@ test('server security integration',async t=>{
     const {blobKey,manifestKey}=await import('../lib/runtime-storage.ts');
     const source=new TextEncoder().encode('return "unchanged runtime"');let checksum=0;for(const byte of source)checksum=(checksum*33+byte)>>>0;
     const ref='a'.repeat(40),file=ref+'/loader',release='runtime-fixture-1';
-    const manifest={release,root:file,maps:12,files:{[file]:{sha256:sha(source),bytes:source.length,checksum}}};
+    const premiumFile=ref+'/premium/break-x2.lua';
+    const manifest={release,root:file,maps:12,files:{[file]:{sha256:sha(source),bytes:source.length,checksum},[premiumFile]:{sha256:sha(source),bytes:source.length,checksum,entitlement:'break-x2'}}};
     const manifestBytes=new TextEncoder().encode(JSON.stringify(manifest));const pointer={release,sha256:sha(manifestBytes)};
     data.set(manifestKey(release),manifestBytes);
     const created=(await b.call('admin/keys','POST',{kind:'permanent',amount:0,label:'runtime'})).data;
@@ -318,12 +319,21 @@ test('server security integration',async t=>{
     assert.equal((await b.call('admin/runtime','POST',pointer)).status,200);
     const stranger=new Browser();assert.equal((await stranger.call('admin/runtime')).status,401);
     const result=await b.call('runtime/session','POST',login);assert.equal(result.status,200);assert.equal(result.data.bytes,source.length);
+    assert.equal(result.data.features.breakAutoX2,true);assert.equal(result.data.premiumEntry,result.data.prefix+premiumFile);
+    const ordinaryId=crypto.randomUUID(),ordinaryKey=await keyFor(ordinaryId,env.KEY_SECRET);
+    await globalThis.__securityDb.insert(schema.keys).values({id:ordinaryId,keyHash:await hash(ordinaryKey),label:'mission',source:'steps',createdAt:clock,expiresAt:clock+3600000,durationKind:'hours',durationAmount:1});
+    const ordinary=await b.call('runtime/session','POST',{...login,key:ordinaryKey,features:{breakAutoX2:true},source:'admin'});
+    assert.equal(ordinary.data.features.breakAutoX2,false);assert.equal(ordinary.data.premiumEntry,null);
     assert.equal((await b.call('runtime/session','POST',{...login,hwid:'executor:wrong-device'})).status,403);
     async function fetchFile(url) {
       const request=new Request(url,{headers:{'cf-connecting-ip':b.ip}});const path=new URL(url).pathname.slice(5).split('/');
       try{return await handle(request,path);}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
     }
     const response=await fetchFile(result.data.entry);assert.equal(response.status,200);assert.equal(await response.text(),'return "unchanged runtime"');
+    assert.equal((await fetchFile(result.data.premiumEntry)).status,200,'active admin-created key can download premium module');
+    assert.equal((await fetchFile(ordinary.data.prefix+premiumFile)).status,403,'forged client flags cannot download premium code');
+    assert.equal((await fetchFile(ordinary.data.prefix+'main/premium/break-x2.lua')).status,403,'legacy aliases cannot bypass premium entitlement');
+    assert.equal((await fetchFile(ordinary.data.entry)).status,200,'standard keys retain regular maps');
     const browserRequest=new Request(result.data.entry,{headers:{accept:'text/html','sec-fetch-mode':'navigate'}});
     const browserResponse=await handle(browserRequest,new URL(result.data.entry).pathname.slice(5).split('/'));
     assert.equal(browserResponse.status,403);assert.match(await browserResponse.text(),/Huh, what are you doing here\?/);

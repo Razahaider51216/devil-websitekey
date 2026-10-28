@@ -36,6 +36,7 @@ key = 'DEVIL-' + '-'.join(secrets.token_hex(4).upper() for _ in range(4))
 hwid = 'executor:runtime-smoke-' + str(uuid.uuid4())
 created = int(time.time() * 1000)
 inserted = False
+additional = []
 try:
     query('INSERT INTO access_keys (id,key_hash,label,source,created_at,expires_at,duration_kind,duration_amount) VALUES (?,?,?,?,?,?,?,?)',
         [test_id, hashlib.sha256(key.encode()).hexdigest(), 'Temporary runtime delivery check', 'admin', created, created + 600_000, 'days', 1])
@@ -49,6 +50,21 @@ try:
     assert web(site + '/api/runtime/session', {'key': key, 'hwid': hwid + '-other', 'bootstrap': 'private-runtime-domain-20261028-2'})[0] == 403
     assert web(site + '/api/runtime/session', {'key': key, 'hwid': hwid})[0] == 426
     print('PASS live key verification and wrong-device denial', flush=True)
+    premium = next((name for name, row in manifest['files'].items() if row.get('entitlement') == 'break-x2'), None)
+    if premium:
+        assert session['features']['breakAutoX2'] is True and session['premiumEntry'] == session['prefix'] + premium
+        ordinary_id = 'runtime-standard-smoke-' + str(uuid.uuid4())
+        ordinary_key = 'DEVIL-' + '-'.join(secrets.token_hex(4).upper() for _ in range(4))
+        additional.append(ordinary_id)
+        query('INSERT INTO access_keys (id,key_hash,label,source,created_at,expires_at,duration_kind,duration_amount) VALUES (?,?,?,?,?,?,?,?)',
+            [ordinary_id, hashlib.sha256(ordinary_key.encode()).hexdigest(), 'Temporary standard entitlement check', 'steps', created, created + 600_000, 'hours', 1])
+        status, value, _ = web(site + '/api/runtime/session', {'key': ordinary_key, 'hwid': hwid, 'bootstrap': 'private-runtime-domain-20261028-2', 'features': {'breakAutoX2': True}})
+        assert status == 200
+        standard = json.loads(value)
+        assert standard['features']['breakAutoX2'] is False and standard['premiumEntry'] is None
+        assert web(standard['prefix'] + premium)[0] == 403
+        assert web(standard['entry'])[0] == 200
+        print('PASS live standard-key premium denial, forged-flag denial and regular map access', flush=True)
 
     def check(item):
         name, expected = item
@@ -75,6 +91,9 @@ try:
         'wrong_device_denied': True, 'revoked_key_denied': True, 'live_roblox_gameplay_verified': False}
     (staging / 'live-delivery-audit.json').write_text(json.dumps(report, indent=2) + '\n')
 finally:
+    for own_id in additional:
+        query('DELETE FROM key_devices WHERE key_id=?', [own_id])
+        query('DELETE FROM access_keys WHERE id=?', [own_id])
     if inserted:
         query('DELETE FROM key_devices WHERE key_id=?', [test_id])
         query('DELETE FROM access_keys WHERE id=?', [test_id])

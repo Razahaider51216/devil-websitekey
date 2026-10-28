@@ -85,6 +85,16 @@ it never changes existing keys, devices or mission progress. A previous manifest
 can be activated to roll back. The admin vault shows the active runtime release.
 # Account issuance and browser navigation
 
+Premium Auto Break x2 is an optional, experimental module. Runtime session
+features are computed from the database (`source = admin`, active, correct HWID).
+Mission-generated 6H/12H/24H keys do not qualify. The premium file declares
+`entitlement: "break-x2"` in the signed release manifest; every download checks
+the key source again after resolving aliases. Client-supplied feature flags do
+not grant access. Bootstrap release 4 passes the authorized module URL to Break.
+The toggle starts disabled. A game hit rejection disables it and restores native
+cadence; server acceptance of x2 is not guaranteed. No game-side entitlement is
+granted by a DEVIL key.
+
 Mission keys are limited to one active key per Discord account across plans,
 flows and browser sessions. Eligibility and the account lock are checked in the
 same SQLite insertion statement; repeated claims return the existing key without

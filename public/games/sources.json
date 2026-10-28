@@ -1,0 +1,137 @@
+{
+  "retrievedAt": "2026-10-28",
+  "games": [
+    {
+      "id": "my-anime-mine",
+      "name": "⛏️ My Anime Mine",
+      "imageUrl": "/games/my-anime-mine.png",
+      "gameUrl": "https://www.roblox.com/games/79389059854988",
+      "enabled": true,
+      "sortOrder": 0,
+      "universeId": 10740316645,
+      "placeId": 79389059854988,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-831892d76d78c59d59cfc5d732eab590/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "tap-simulator-reborn",
+      "name": "[👻] Tap Simulator REBORN",
+      "imageUrl": "/games/tap-simulator-reborn.png",
+      "gameUrl": "https://www.roblox.com/games/72858262610964",
+      "enabled": true,
+      "sortOrder": 1,
+      "universeId": 10629695169,
+      "placeId": 72858262610964,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-3f39544d3dfe50dbe0fef667301f1f0b/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "climb-for-animals-eggs",
+      "name": "[🎃]Climb For Animals Eggs🥚",
+      "imageUrl": "/games/climb-for-animals-eggs.png",
+      "gameUrl": "https://www.roblox.com/games/85738654635245",
+      "enabled": true,
+      "sortOrder": 2,
+      "universeId": 10765490774,
+      "placeId": 85738654635245,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-0c4f574bafb0c250abf8db6c2cc1cf9d/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "lift-rock-for-eggs",
+      "name": "Lift Rock For Eggs",
+      "imageUrl": "/games/lift-rock-for-eggs.png",
+      "gameUrl": "https://www.roblox.com/games/76731343328034",
+      "enabled": true,
+      "sortOrder": 3,
+      "universeId": 10768316438,
+      "placeId": 76731343328034,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-ae0fec3d87e311189536658bf9751b7f/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "ride-a-fish",
+      "name": "Ride A Fish 🐟",
+      "imageUrl": "/games/ride-a-fish.png",
+      "gameUrl": "https://www.roblox.com/games/104050046639813",
+      "enabled": true,
+      "sortOrder": 4,
+      "universeId": 10766691148,
+      "placeId": 104050046639813,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-079bd84b1482edca14d285466ab6c499/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "steal-an-egg",
+      "name": "Steal An Egg",
+      "imageUrl": "/games/steal-an-egg.png",
+      "gameUrl": "https://www.roblox.com/games/107778070777162",
+      "enabled": true,
+      "sortOrder": 5,
+      "universeId": 10563114921,
+      "placeId": 107778070777162,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-875b2a6dc156ce6dd64eb637e73238ce/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "ride-a-pet",
+      "name": "[💫] Ride A Pet",
+      "imageUrl": "/games/ride-a-pet.png",
+      "gameUrl": "https://www.roblox.com/games/124216119978534",
+      "enabled": true,
+      "sortOrder": 6,
+      "universeId": 10035204815,
+      "placeId": 124216119978534,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-3ffbd41c5b51c95ae19350431588608e/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "break-and-steal-an-egg",
+      "name": "Break and Steal an Egg",
+      "imageUrl": "/games/break-and-steal-an-egg.png",
+      "gameUrl": "https://www.roblox.com/games/114326934417838",
+      "enabled": true,
+      "sortOrder": 7,
+      "universeId": 10765288803,
+      "placeId": 114326934417838,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-4286dd8385df9534c4a15c1e3807d656/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "loot-to-forge",
+      "name": "[🎃]+1 Loot To Forge",
+      "imageUrl": "/games/loot-to-forge.png",
+      "gameUrl": "https://www.roblox.com/games/118805555015549",
+      "enabled": true,
+      "sortOrder": 8,
+      "universeId": 10684750879,
+      "placeId": 118805555015549,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-82066d8599c04685dafed829784abc81/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "build-an-ant-empire",
+      "name": "Build An Ant Empire",
+      "imageUrl": "/games/build-an-ant-empire.png",
+      "gameUrl": "https://www.roblox.com/games/78490532994307",
+      "enabled": true,
+      "sortOrder": 9,
+      "universeId": 10436530264,
+      "placeId": 78490532994307,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-748a5b6cd65da42ef08eb0201334d57d/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "anime-dice",
+      "name": "[🎃] Anime Dice",
+      "imageUrl": "/games/anime-dice.png",
+      "gameUrl": "https://www.roblox.com/games/113290951185459",
+      "enabled": true,
+      "sortOrder": 10,
+      "universeId": 10708913337,
+      "placeId": 113290951185459,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-0f94a2d3d0b8991744905f6686bf2bc8/768/432/Image/Png/noFilter"
+    },
+    {
+      "id": "dig-for-eggs",
+      "name": "🎃 Dig For Eggs",
+      "imageUrl": "/games/dig-for-eggs.png",
+      "gameUrl": "https://www.roblox.com/games/121831322352666",
+      "enabled": true,
+      "sortOrder": 11,
+      "universeId": 10765013362,
+      "placeId": 121831322352666,
+      "thumbnailSource": "https://tr.rbxcdn.com/180DAY-fc79368d1bd39b604895f87f71a5d100/768/432/Image/Png/noFilter"
+    }
+  ]
+}

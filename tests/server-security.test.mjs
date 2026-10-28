@@ -54,6 +54,31 @@ class Browser {
   }
 }
 test('server security integration',async t=>{
+  await t.test('supported games seed, Discord-admin CRUD, safe links, visibility and concurrent editing',async()=>{
+    await reset();const guest=new Browser(),owner=new Browser(),member=new Browser();
+    const seeded=await guest.call('games');assert.equal(seeded.status,200);assert.equal(seeded.data.games.length,12);
+    assert.ok(seeded.data.games.every(game=>game.gameUrl.startsWith('https://www.roblox.com/games/')&&game.imageUrl.startsWith('/games/')));
+    assert.equal((await guest.call('admin/games')).status,401);
+    await member.login('223456789012345678');assert.equal((await member.call('admin/games')).status,403);
+    await owner.login();let catalog=(await owner.call('admin/games')).data;
+    const draft={name:'Added game',imageUrl:'https://tr.rbxcdn.com/image.png',gameUrl:'https://www.roblox.com/games/12345/Test?tracking=1',enabled:true,sortOrder:20};
+    assert.equal((await member.call('admin/games','POST',{revision:catalog.revision,game:draft})).status,403);
+    assert.equal((await owner.call('admin/games','POST',{revision:catalog.revision,game:draft},{origin:'https://evil.test'})).status,403);
+    for(const patch of [{gameUrl:'javascript:alert(1)'},{gameUrl:'https://www.roblox.com.evil.test/games/12345'},{imageUrl:'data:text/html,bad'},{imageUrl:'https://user:pass@example.com/x.png'},{sortOrder:-1},{name:''}]) {
+      assert.equal((await owner.call('admin/games','POST',{revision:catalog.revision,game:{...draft,...patch}})).status,400);
+    }
+    const added=await owner.call('admin/games','POST',{revision:catalog.revision,game:draft});assert.equal(added.status,200);
+    const game=added.data.games.find(g=>g.name==='Added game');assert.equal(game.gameUrl,'https://www.roblox.com/games/12345');
+    assert.equal((await guest.call('games')).data.games.length,13);
+    assert.equal((await owner.call('admin/games/'+game.id,'PATCH',{revision:catalog.revision,game:{...draft,name:'Stale edit'}})).status,409);
+    const contenders=await Promise.all(['First edit','Second edit'].map(name=>owner.call('admin/games/'+game.id,'PATCH',{revision:added.data.revision,game:{...draft,name,enabled:false}})));
+    assert.deepEqual(contenders.map(r=>r.status).sort(),[200,409]);
+    assert.equal((await guest.call('games')).data.games.length,12,'hidden game must not be public');
+    catalog=(await owner.call('admin/games')).data;assert.equal(catalog.games.length,13,'hidden game remains editable');
+    assert.equal((await owner.call('admin/games/'+game.id,'DELETE',{revision:catalog.revision})).status,200);
+    assert.equal((await owner.call('admin/games')).data.games.length,12);
+    assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0,'game edits must not change key data');
+  });
   async function readySix(b) {
     await b.call('flow/select','POST',{plan:'6h'});
     await b.call('flow/open','POST',{step:1});await b.call('flow/return','POST',{step:1});clock+=30000;

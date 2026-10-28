@@ -1,5 +1,11 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "แมพที่รองรับ": "Supported games",
+  "ภาพรวม": "Overview",
+  "จัดการคีย์": "Access keys",
+  "จัดการแมพ": "Supported games",
+  "ไฟล์สคริปต์": "Script files",
+  "เลือกหมวดจัดการ": "Select admin section",
   "เลือกภารกิจ 6H": "Choose the 6H mission",
   "เลือกอายุคีย์ แล้วทำภารกิจของโหมดที่คุณเลือก": "Choose your key duration and complete its missions.",
   "{steps} ขั้นตอน รวมยืนยันบอท": "{steps} steps including human verification",

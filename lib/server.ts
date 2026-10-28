@@ -10,6 +10,7 @@ import { discordRequired, requireDiscord, requireDiscordAdmin, flowOwner, flowOw
 import { plans, validPlan, planFor, type PlanId } from "./plans";
 import { handleScripts } from "./script-storage";
 import { handleRuntime } from "./runtime-storage";
+import { gamesSettingId, initialGames, orderedGames, validateGame, type SupportedGame } from "./supported-games";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -57,6 +58,19 @@ export async function rate(req: Request, kind: string, maximum: number) {
 export async function admin(req: Request) {
   await rate(req, "admin", 60);
   await requireDiscordAdmin(req);
+}
+async function gameCatalog() {
+  const stored = await getDb().select().from(siteSettings).where(eq(siteSettings.id, gamesSettingId)).get();
+  return { games: stored ? JSON.parse(stored.value) as SupportedGame[] : initialGames(), revision: stored?.updatedAt ?? 0 };
+}
+async function updateGameCatalog(games: SupportedGame[], revision: number) {
+  const db = getDb(), updatedAt = Math.max(Date.now(), revision + 1);
+  const value = JSON.stringify(games);
+  const changed = revision === 0
+    ? await db.insert(siteSettings).values({ id: gamesSettingId, value, updatedAt }).onConflictDoNothing().returning().get()
+    : await db.update(siteSettings).set({ value, updatedAt }).where(and(eq(siteSettings.id, gamesSettingId), eq(siteSettings.updatedAt, revision))).returning().get();
+  if (!changed) fail(409, "The game list changed. Refresh before saving again.");
+  return { games: orderedGames(games), revision: updatedAt };
 }
 export async function flow(req: Request, create = false, selectedPlan?: PlanId) {
   const user = await requireDiscord(req);
@@ -123,6 +137,10 @@ export async function presentKey(row: typeof keys.$inferSelect) {
 export async function handle(req: Request, path: string[]): Promise<Response> {
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   const db = getDb(), now = Date.now(), route = path.join("/");
+  if (route === "games" && req.method === "GET") {
+    const catalog = await gameCatalog();
+    return json({ games: orderedGames(catalog.games, true) }, 200, { "Cache-Control": "public, max-age=60" });
+  }
   if (path[0] === "runtime" || route === "admin/runtime") {
     return handleRuntime(req, path, { admin, rate, validate: (original, input) => {
       const headers = new Headers(original.headers); headers.set("Content-Type", "application/json"); headers.delete("Content-Length");
@@ -238,6 +256,23 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
   if (route.startsWith("admin")) {
     await admin(req);
     if (req.method !== "GET") sameOrigin(req);
+    if (route === "admin/games" && req.method === "GET") {
+      const catalog = await gameCatalog();return json({ ...catalog, games: orderedGames(catalog.games) });
+    }
+    if ((route === "admin/games" && req.method === "POST") || (path[0] === "admin" && path[1] === "games" && path.length === 3 && ["PATCH", "DELETE"].includes(req.method))) {
+      const input = await readJson(req);
+      if (!Number.isSafeInteger(input.revision) || (input.revision as number) < 0) fail(400, "Invalid catalog revision");
+      const catalog = await gameCatalog();
+      if (catalog.revision !== input.revision) fail(409, "The game list changed. Refresh before saving again.");
+      const previous = path[2] ? catalog.games.find(game => game.id === path[2]) : undefined;
+      if (path[2] && !previous) fail(404, "Game not found");
+      if (req.method === "DELETE") return json(await updateGameCatalog(catalog.games.filter(game => game.id !== path[2]), catalog.revision));
+      if (!previous && catalog.games.length >= 100) fail(400, "Maximum 100 games");
+      let game: SupportedGame;
+      try { game = validateGame(input.game, previous?.id || crypto.randomUUID(), previous); }
+      catch (error) { fail(400, (error as Error).message); }
+      return json(await updateGameCatalog(previous ? catalog.games.map(item => item.id === previous.id ? game : item) : [...catalog.games, game], catalog.revision));
+    }
     if (route === "admin/settings" && req.method === "GET") return json(await adminConfig());
     if (route === "admin/settings" && req.method === "POST") {
       const input = await body(req);

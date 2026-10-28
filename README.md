@@ -106,3 +106,12 @@ Climb for Eggs, Anime Dice และ Break and Steal an Egg ใช้ API นี
 Site ID เก็บใน `.openai/hosting.json` ใช้ Site เดิมในการเผยแพร่ครั้งต่อไป การเผยแพร่ครั้งแรกเป็นแบบส่วนตัวสำหรับเจ้าของ ต้องเปลี่ยน audience เป็นสาธารณะก่อนเปิดให้ผู้ใช้ทั่วไป API ตรวจคีย์ก็อยู่ภายใต้ audience เดียวกัน
 
 อย่า commit `.env`, `.dev.vars`, ฐานข้อมูล local หรือไฟล์ใน outputs
+
+
+## Supported Games
+
+`/games` lists all 12 games in the DEVIL HUB router, using official Roblox names, links and thumbnail snapshots in `public/games`. Every card links to Roblox and the existing key portal. The directory keeps the Discord sign-in requirement.
+
+Admin now has a section selector for overview, keys, games, mission links and script files. Under Games, add or edit the name, image URL, Roblox link, order and visibility; records can also be deleted. Changes persist in the existing D1 `site_settings` row `supported-games`, without a schema migration. Admin CRUD requires the Discord admin session and same-origin requests; revision checks prevent concurrent edits from overwriting each other. Adding a website listing does not add Lua game support.
+
+Checks: `npm test`, `npx tsc --noEmit`, `npm run build:cf`, and `python tests/supported-games-browser.py`. The browser test mocks all API requests and can use `BASE_URL` for the deployed UI without modifying production data.

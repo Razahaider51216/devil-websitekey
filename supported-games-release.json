@@ -1,0 +1,23 @@
+{
+  "games": 12,
+  "images_verified": 12,
+  "url": "https://devil-hub.dev/games",
+  "worker_version": "43a275cd-1e57-41cf-b3b6-624a5bdf3fa9",
+  "release": "supported-games-20261028-1",
+  "catalog_storage": "site_settings/supported-games",
+  "admin_sections": [
+    "overview",
+    "keys",
+    "games",
+    "missions",
+    "scripts"
+  ],
+  "discord_admin_required": true,
+  "csrf_checked": true,
+  "optimistic_revision_checks": true,
+  "backend_tests_passed": 43,
+  "desktop_browser_verified": true,
+  "mobile_browser_verified": true,
+  "official_roblox_metadata": true,
+  "existing_keys_and_runtime_files_unchanged": true
+}

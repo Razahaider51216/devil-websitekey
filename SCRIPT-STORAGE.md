@@ -90,9 +90,12 @@ features are computed from the database (`source = admin`, active, correct HWID)
 Mission-generated 6H/12H/24H keys do not qualify. The premium file declares
 `entitlement: "break-x2"` in the signed release manifest; every download checks
 the key source again after resolving aliases. Client-supplied feature flags do
-not grant access. Bootstrap release 4 passes the authorized module URL to Break.
-The toggle starts disabled. A game hit rejection disables it and restores native
-cadence; server acceptance of x2 is not guaranteed. No game-side entitlement is
+not grant access. Bootstrap release 5 passes the authorized module URL to Break
+and applies the server's Premium/Free tier to the existing Home badge on all maps.
+Break has a separate Premium tab; Free users see a locked notice with no x2 toggle.
+The toggle starts disabled. Game hit rejections are recorded without changing the
+user's enabled toggle. Manual off restores native cadence; server acceptance of
+x2 is not guaranteed. No game-side entitlement is
 granted by a DEVIL key.
 
 Mission keys are limited to one active key per Discord account across plans,

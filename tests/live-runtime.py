@@ -52,7 +52,7 @@ try:
     print('PASS live key verification and wrong-device denial', flush=True)
     premium = next((name for name, row in manifest['files'].items() if row.get('entitlement') == 'break-x2'), None)
     if premium:
-        assert session['features']['breakAutoX2'] is True and session['premiumEntry'] == session['prefix'] + premium
+        assert session['features']['premium'] is True and session['features']['breakAutoX2'] is True and session['premiumEntry'] == session['prefix'] + premium
         ordinary_id = 'runtime-standard-smoke-' + str(uuid.uuid4())
         ordinary_key = 'DEVIL-' + '-'.join(secrets.token_hex(4).upper() for _ in range(4))
         additional.append(ordinary_id)
@@ -61,7 +61,7 @@ try:
         status, value, _ = web(site + '/api/runtime/session', {'key': ordinary_key, 'hwid': hwid, 'bootstrap': 'private-runtime-domain-20261028-2', 'features': {'breakAutoX2': True}})
         assert status == 200
         standard = json.loads(value)
-        assert standard['features']['breakAutoX2'] is False and standard['premiumEntry'] is None
+        assert standard['features']['premium'] is False and standard['features']['breakAutoX2'] is False and standard['premiumEntry'] is None
         assert web(standard['prefix'] + premium)[0] == 403
         assert web(standard['entry'])[0] == 200
         print('PASS live standard-key premium denial, forged-flag denial and regular map access', flush=True)

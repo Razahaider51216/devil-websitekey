@@ -74,7 +74,7 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
     const ticket = await seal({ ...pointer, keyHash: await hash(String(input.key).trim()), hwidHash: await hash("DEVIL-HWID:v1:" + String(input.hwid).trim()) }, "runtime-delivery", vars().KEY_SECRET || "", ttl);
     const prefix = new URL(`/api/runtime/files/${ticket}/`, req.url).href;
     const premiumFile = premium ? Object.keys(manifest.files).find(name => manifest.files[name].entitlement === "break-x2") : undefined;
-    return json({ release: pointer.release, prefix, features: { breakAutoX2: !!premiumFile }, premiumEntry: premiumFile ? prefix + premiumFile : null, entry: prefix + manifest.root, bytes: manifest.files[manifest.root].bytes,
+    return json({ release: pointer.release, prefix, features: { premium, breakAutoX2: !!premiumFile }, premiumEntry: premiumFile ? prefix + premiumFile : null, entry: prefix + manifest.root, bytes: manifest.files[manifest.root].bytes,
       checksum: manifest.files[manifest.root].checksum, expiresAt: now + ttl });
   }
   if (path[0] === "runtime" && path[1] === "files" && req.method === "GET" && path.length >= 5) {

@@ -320,10 +320,12 @@ test('server security integration',async t=>{
     const stranger=new Browser();assert.equal((await stranger.call('admin/runtime')).status,401);
     const result=await b.call('runtime/session','POST',login);assert.equal(result.status,200);assert.equal(result.data.bytes,source.length);
     assert.equal(result.data.features.breakAutoX2,true);assert.equal(result.data.premiumEntry,result.data.prefix+premiumFile);
+    assert.equal(result.data.features.premium,true);
     const ordinaryId=crypto.randomUUID(),ordinaryKey=await keyFor(ordinaryId,env.KEY_SECRET);
     await globalThis.__securityDb.insert(schema.keys).values({id:ordinaryId,keyHash:await hash(ordinaryKey),label:'mission',source:'steps',createdAt:clock,expiresAt:clock+3600000,durationKind:'hours',durationAmount:1});
     const ordinary=await b.call('runtime/session','POST',{...login,key:ordinaryKey,features:{breakAutoX2:true},source:'admin'});
     assert.equal(ordinary.data.features.breakAutoX2,false);assert.equal(ordinary.data.premiumEntry,null);
+    assert.equal(ordinary.data.features.premium,false);
     assert.equal((await b.call('runtime/session','POST',{...login,hwid:'executor:wrong-device'})).status,403);
     async function fetchFile(url) {
       const request=new Request(url,{headers:{'cf-connecting-ip':b.ip}});const path=new URL(url).pathname.slice(5).split('/');

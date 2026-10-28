@@ -2,7 +2,7 @@
 Run manually; excluded from the offline npm test suite. Never prints keys or tickets.
 """
 from pathlib import Path
-import concurrent.futures, hashlib, json, re, secrets, time, urllib.request, urllib.error, uuid
+import concurrent.futures, hashlib, json, os, re, secrets, time, urllib.request, urllib.error, uuid
 
 root = Path(__file__).resolve().parents[1]
 text = (root / '.env.cloudflare.local').read_text(encoding='utf-8-sig')
@@ -10,7 +10,8 @@ token = re.search(r'^\s*CLOUDFLARE_API_TOKEN\s*=\s*(.+?)\s*$', text, re.M)[1].st
 configuration = json.loads((root / 'cloudflare.config.json').read_text())
 api = 'https://api.cloudflare.com/client/v4/accounts/9507af231005e5cfc8290675b502c50e/d1/database/' + configuration['database_id'] + '/query'
 site = 'https://devil-hub.dev'
-manifest = json.loads((root.parent / 'devil-private-staging-20261028/runtime-manifest.json').read_text())
+staging = Path(os.environ.get('DEVIL_RUNTIME_STAGING', str(root.parent / 'devil-private-staging-20261028')))
+manifest = json.loads((staging / 'runtime-manifest.json').read_text())
 
 def query(sql, params):
     request = urllib.request.Request(api, data=json.dumps({'sql': sql, 'params': params}).encode(),
@@ -72,7 +73,7 @@ try:
     print('PASS live legacy main aliases and immediate revoked-key denial', flush=True)
     report = {'release': session['release'], 'files_verified': len(manifest['files']), 'maps': manifest['maps'],
         'wrong_device_denied': True, 'revoked_key_denied': True, 'live_roblox_gameplay_verified': False}
-    (root.parent / 'devil-private-staging-20261028/live-delivery-audit.json').write_text(json.dumps(report, indent=2) + '\n')
+    (staging / 'live-delivery-audit.json').write_text(json.dumps(report, indent=2) + '\n')
 finally:
     if inserted:
         query('DELETE FROM key_devices WHERE key_id=?', [test_id])

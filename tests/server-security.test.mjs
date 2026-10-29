@@ -71,6 +71,19 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('reset device barrier stops the old machine reclaiming a premium key while a new device can activate',async()=>{
+    await reset();const operator=new Browser();await operator.login();
+    const premium=(await operator.call('admin/keys','POST',{kind:'days',amount:1,label:'reset fixture'})).data;
+    const user=new Browser();
+    assert.equal((await user.call('validate','POST',{key:premium.key,hwid:'old-device-fixture'})).data.valid,true);
+    const row=await globalThis.__securityDb.select().from(schema.keys).get();
+    await client.execute({sql:'DELETE FROM key_devices WHERE key_id=?',args:[row.id]});
+    await client.execute({sql:'INSERT INTO site_settings(id,value,updated_at) VALUES(?,?,?)',args:[
+      'discord:hwid-reset:'+row.id,JSON.stringify({blockedHwidHash:await hash('DEVIL-HWID:v1:old-device-fixture'),blockedUntil:clock+600000}),clock]});
+    assert.equal((await user.call('validate','POST',{key:premium.key,hwid:'old-device-fixture'})).data.status,'hwid_reset');
+    assert.equal((await user.call('validate','POST',{key:premium.key,hwid:'new-device-fixture'})).data.valid,true);
+    assert.equal((await user.call('validate','POST',{key:premium.key,hwid:'old-device-fixture'})).data.status,'hwid_mismatch');
+  });
   await t.test('domain Dump delivery permits only pinned filenames, rejects corrupt objects and keeps document navigation separate',async()=>{
     const {serveDump}=await import('../lib/dump-delivery.ts');
     const {dumpFiles}=await import('../lib/dump-manifest.ts');

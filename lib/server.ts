@@ -11,6 +11,7 @@ import { plans, validPlan, planFor, type PlanId } from "./plans";
 import { handleScripts } from "./script-storage";
 import { handleRuntime } from "./runtime-storage";
 import { handleFinderTest } from "./finder-test";
+import { resetPremiumHwid, resetSettingId } from "./discord-hwid-reset";
 import { gamesSettingId, initialGames, orderedGames, validateGame, type SupportedGame } from "./supported-games";
 
 export const vars = () => env as unknown as Record<string, string>;
@@ -137,6 +138,9 @@ export async function presentKey(row: typeof keys.$inferSelect) {
 }
 export async function handle(req: Request, path: string[]): Promise<Response> {
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
+  if (path.join("/") === "bot/reset-hwid") {
+    return resetPremiumHwid(req, (env as unknown as { DB?: D1Database }).DB, vars().DISCORD_BOT_API_SECRET || "");
+  }
   const db = getDb(), now = Date.now(), route = path.join("/");
   if (path[0] === "finder-test") return handleFinderTest(req, path, { rate, validate: (original, input) => {
     const headers = new Headers(original.headers); headers.set("Content-Type", "application/json"); headers.delete("Content-Length");
@@ -252,6 +256,13 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     // A primary key makes simultaneous first-use requests compete for exactly one binding.
     let binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
     if (!binding) {
+      const reset = await db.select().from(siteSettings).where(eq(siteSettings.id, resetSettingId(row.id))).get();
+      if (reset) {
+        const data = JSON.parse(reset.value) as { blockedHwidHash?: string; blockedUntil?: number };
+        if (data.blockedHwidHash === hwidHash && Number(data.blockedUntil) > Date.now()) {
+          return json({ valid: false, status: "hwid_reset", expiresAt: row.expiresAt });
+        }
+      }
       await db.insert(keyDevices).values({ keyId: row.id, hwidHash, boundAt: Date.now() }).onConflictDoNothing();
       binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
     }

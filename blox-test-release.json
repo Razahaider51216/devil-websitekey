@@ -1,24 +1,26 @@
 {
-  "release": "blox-progression-test-20261029-1",
+  "release": "blox-progression-test-20261029-2",
   "keyRequired": false,
   "mainLoaderChanged": false,
   "liveRobloxVerified": false,
-  "key": "tests/blox-progression/20261029-1.lua",
-  "bytes": 757798,
-  "sha256": "882cfe0f0b9c78924ebcf349c004c09683a5fc3639c4223c42fc0fc8b7ef87d6",
+  "key": "tests/blox-progression/20261029-2.lua",
+  "bytes": 759843,
+  "sha256": "89636a10a53dd86b5e11e605390ab04b9e8e4cbb1c7353cf6def06b27b516638",
   "sources": {
     "preview\\OuroFlow.lua": "0c30762d3c9c3aa7c25ca3aeceab960a771c96b5af290a3b67aed627161385f5",
     "devil-blue-gui.lua": "36a40f149af9136d1cf1bbf8e2923920fdd5b7a3e90a00a53d913e07fac93f9d",
     "tools\\blox-test\\data.lua": "ba60bbc3d0bef770a748c0c0d37a3b2b6d4d2eacb7977489957c11ae51696c85",
-    "tools\\blox-test\\core.lua": "5c7140d6db7a62882c1e3c87d37bd31cfe24e2dcd853625caa31ee12b5405d70",
-    "tools\\blox-test\\runtime.lua": "bcfddb11f3ab5ec22ac198f5fb5bca1b684939b1092b604e4c021d70d502af86"
+    "tools\\blox-test\\core.lua": "b0df994783ab7e1b650837243ecdd524218fc4846b44d848f26ea14c182c2aca",
+    "tools\\blox-test\\runtime.lua": "d6e37d6937d06f7005521cfb155aff52ef74ac61c43100fc145e983d4adb3633"
   },
-  "workerVersion": "27f98f56-b0b9-40c2-bc6a-04f4b3efce8f",
+  "workerVersion": "f573385b-f2d2-4f5c-812f-618740fb9aa5",
   "testURL": "https://devil-hub.dev/test/blox-progress",
   "liveHTTP": 200,
   "liveDeliveryHashVerified": true,
   "mainRuntimePointersUnchanged": true,
-  "webTestsPassed": 51,
+  "focusedWebTestPassed": true,
   "luauCompilePassed": true,
-  "luaCommit": "b2438cf"
+  "farmLoopRegressionPassed": true,
+  "luaCommit": "a7b7f12",
+  "gui": "Break compact frontend options and two-column groupboxes"
 }

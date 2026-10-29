@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { readConfig } from './config.js';
-import { panel, resetModal, ids, info } from './ui.js';
+import { panel, resetModal, resetResult, ids, info } from './ui.js';
 import { register } from './register.js';
 import { resetHwid } from './reset.js';
 
@@ -64,16 +64,19 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isModalSubmit() && interaction.customId === ids.modal) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const key = interaction.fields.getTextInputValue('premium_key').trim();
-      const message = await resetHwid(config, key, interaction.user.id, interaction.id);
-      await interaction.editReply({ content: message, allowedMentions: { parse: [] } });
+      const result = await resetHwid(config, key, interaction.user.id, interaction.id);
+      await interaction.editReply(resetResult(result, client.user.displayAvatarURL({ size: 128, extension: 'png' })));
     }
   } catch (error) {
     // Never print interaction payloads, keys, tokens, HTTP bodies or private URLs.
     console.error('Discord action failed:', error.code || error.name);
     const content = 'ทำรายการไม่สำเร็จ กรุณาตรวจสิทธิ์บอทหรือลองอีกครั้ง';
     try {
-      if (interaction.deferred || interaction.replied) await interaction.editReply({ content });
-      else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      const payload = interaction.isModalSubmit() && interaction.customId === ids.modal
+        ? resetResult({ ok: false, message: content }, client.user.displayAvatarURL({ size: 128, extension: 'png' }))
+        : { content };
+      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+      else await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
     } catch { /* Interaction may have expired. */ }
   }
 });

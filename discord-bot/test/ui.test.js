@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { MessageFlags } from 'discord.js';
-import { panel, resetModal, info } from '../src/ui.js';
+import { panel, resetModal, resetResult, info } from '../src/ui.js';
 import { command } from '../src/commands.js';
 import { resetHwid } from '../src/reset.js';
 
@@ -55,5 +55,36 @@ test('reset client sends one bounded authenticated POST and does not echo the ke
     assert.equal(JSON.parse(options.body).key, key); assert.equal(options.redirect, 'error');
     return Response.json({ ok: true, status: 'reset' });
   });
-  assert.equal(calls, 1); assert.ok(!result.includes(key));
+  assert.equal(calls, 1); assert.equal(result.ok, true); assert.ok(!JSON.stringify(result).includes(key));
+});
+
+test('reset results use the requested success/failure emoji and bot avatar only in a colorless result embed', () => {
+  const avatar = 'https://cdn.discordapp.com/avatars/123/avatar.png';
+  for (const ok of [true, false]) {
+    const payload = resetResult({ ok, message: 'Fixture result' }, avatar);
+    const embed = payload.embeds[0].toJSON();
+    assert.equal(payload.components, undefined); assert.equal(payload.flags, undefined);
+    assert.equal(payload.content, ''); assert.equal(embed.color, undefined);
+    assert.equal(embed.thumbnail.url, avatar);
+    assert.match(embed.description, ok ? /<a:emoji_25:1540658596487102464>/ : /<:ojic_018:1546638491478265946>/);
+    assert.match(embed.description, /Fixture result/);
+  }
+  assert.ok(!JSON.stringify(panel('https://devil-hub.dev').components.map(x => x.toJSON())).includes(avatar));
+  assert.ok(!info('https://devil-hub.dev').includes(avatar));
+});
+
+test('API rejection, cooldown, transport errors and malformed responses produce failure results', async () => {
+  const config = { website: 'https://devil-hub.dev', apiSecret: 'fixture' };
+  for (const send of [
+    async () => Response.json({ error: 'premium_required' }, { status: 403 }),
+    async () => Response.json({ error: 'cooldown', retryAfter: 300 }, { status: 429 }),
+    async () => Response.json({ ok: true, status: 'unknown' }),
+    async () => Response.json(null),
+    async () => new Response('<html>Unavailable</html>', { status: 503 }),
+    async () => { throw new Error('private transport details'); },
+  ]) {
+    const result = await resetHwid(config, 'private-key', '123', '456', send);
+    assert.equal(result.ok, false);
+    assert.ok(!JSON.stringify(result).includes('private'));
+  }
 });

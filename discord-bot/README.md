@@ -41,6 +41,10 @@ Reset Hwid is a green Success button with `watergear` (`1565299333794889778`).
 Get Key uses 🔑. Info is a Secondary button with the animated `jungwad_`
 emoji (`1565299349099909120`).
 Info displays both Thai and English instructions in the same private message.
+Reset results are separate ephemeral, colorless embeds. They show the bot's own
+avatar as a thumbnail, with `<a:emoji_25:1540658596487102464>` on success or
+`<:ojic_018:1546638491478265946>` on failure, including API/network failures.
+The main Components V2 panel and Info message do not get this avatar thumbnail.
 
 ## Reset rules
 

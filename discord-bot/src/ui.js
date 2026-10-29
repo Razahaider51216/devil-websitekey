@@ -1,9 +1,17 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder,
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, EmbedBuilder,
   MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags, ModalBuilder,
   SeparatorBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { fileURLToPath } from 'node:url';
 
 export const ids = { reset: 'devilhub:hwid:reset', modal: 'devilhub:hwid:submit', info: 'devilhub:key:info' };
+export function resetResult(result, botAvatar) {
+  const emoji = result.ok ? '<a:emoji_25:1540658596487102464>' : '<:ojic_018:1546638491478265946>';
+  const heading = result.ok ? 'ดำเนินการสำเร็จ / Success' : 'รีเซ็ตไม่สำเร็จ / Failed';
+  const embed = new EmbedBuilder().setTitle('DEVIL HUB • Reset HWID')
+    .setDescription(`${emoji} **${heading}**\n\n${result.message}`);
+  if (botAvatar) embed.setThumbnail(botAvatar);
+  return { content: '', embeds: [embed], allowedMentions: { parse: [] } };
+}
 export function panel(website) {
   const container = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(

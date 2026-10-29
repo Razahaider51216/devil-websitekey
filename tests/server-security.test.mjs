@@ -71,6 +71,22 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('domain Dump delivery permits only pinned filenames, rejects corrupt objects and keeps document navigation separate',async()=>{
+    const {serveDump}=await import('../lib/dump-delivery.ts');
+    const {dumpFiles}=await import('../lib/dump-manifest.ts');
+    const req=new Request(origin+'/dump',{headers:{accept:'*/*'}});
+    assert.equal((await serveDump(req,'../runtime/entry.lua')).status,404);
+    assert.equal((await serveDump(new Request(origin+'/dump',{headers:{accept:'text/html'}}),'entry.lua')).status,403);
+    assert.equal((await serveDump(req,'entry.lua')).status,503);
+    const old=env.SCRIPT_FILES;
+    try {
+      env.SCRIPT_FILES={get:async()=>({size:dumpFiles['entry.lua'].bytes,arrayBuffer:async()=>new TextEncoder().encode('corrupt source').buffer})};
+      assert.equal((await serveDump(req,'entry.lua')).status,503);
+      const {GET}=await import('../app/dump/assets/[file]/route.ts');
+      assert.equal((await GET(req,{params:Promise.resolve({file:'entry.lua'})})).status,404);
+      assert.equal((await GET(req,{params:Promise.resolve({file:'unknown.lua'})})).status,404);
+    } finally { if(old===undefined)delete env.SCRIPT_FILES;else env.SCRIPT_FILES=old; }
+  });
   await t.test('independent Finder test isolates premium keys, device-bound sessions, reports, filters and expiry from the main runtime',async()=>{
     await reset();const adminUser=new Browser();await adminUser.login();
     const premium=(await adminUser.call('admin/keys','POST',{kind:'days',amount:1,label:'finder fixture'})).data;

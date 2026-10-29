@@ -110,6 +110,12 @@ Site ID เก็บใน `.openai/hosting.json` ใช้ Site เดิมใ
 
 ## Google and Discord sign-in
 
+## Independent Steal Finder test
+
+`https://devil-hub.dev/test/steal-finder` serves a separate read-only Lua finder from R2 `tests/steal-finder/v1.lua`. It is not connected to the main loader or Chilli Pro. The experimental `/api/finder-test/*` endpoints require an active admin-created DEVIL key and the existing device binding; reporting/read sessions expire after 15 minutes. Reports use isolated `site_settings` keys, expire after 120 seconds and contain at most 25 client-observed eggs per server. The feed is not independently verified by the game server. Source/usage notes live in the private Lua repo's `devil-steal-finder-test-README.md`; deployment checks are recorded in `finder-test-release.json`.
+
+## Sign-in configuration
+
 The public login page offers Google and Discord after Turnstile verification. Create a Google OAuth Web application with the exact redirect URI `https://devil-hub.dev/api/auth/google/callback`. Set `GOOGLE_CLIENT_ID` as a Cloudflare Worker runtime variable and `GOOGLE_CLIENT_SECRET` as a runtime secret, then redeploy. Without these settings, Google is disabled and Discord remains available. The existing `DISCORD_LOGIN_REQUIRED=1` setting requires login through either provider.
 
 Discord accounts retain their existing keys. Google accounts use a separate `google:` identity namespace; accounts are not linked automatically. Admin access still requires Discord and `DISCORD_ADMIN_USER_IDS`. Google login uses one-use state, PKCE, nonce and server-side signature/issuer/audience/expiry validation. Logout revokes the server session. OAuth provider tokens are not saved in browser storage or the database.

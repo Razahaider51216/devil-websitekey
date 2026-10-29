@@ -1,0 +1,21 @@
+{
+  "release": "finder-test-20261029-1",
+  "workerVersion": "5b8cc447-9c40-484f-a705-bcc36da4309b",
+  "testUrl": "https://devil-hub.dev/test/steal-finder",
+  "luaSHA256": "7bf1c0a0f1b668552a499b90898e226f0ef8d57b08c52cfe9987a593eef037ac",
+  "testsPassed": 49,
+  "typecheck": "passed",
+  "build": "passed",
+  "luauCompile": "passed",
+  "scannerFixtures": "passed",
+  "livePremiumSession": 200,
+  "liveFreeDenied": 403,
+  "liveWrongDeviceDenied": 403,
+  "liveRevokedDenied": 403,
+  "liveFeedRead": 200,
+  "mainRuntimePointersUnchanged": true,
+  "robloxExecutorVerified": false,
+  "twoServerEggObservationVerified": false,
+  "thirdPartyProAPIUsed": false,
+  "temporaryCheckKeysRemoved": true
+}

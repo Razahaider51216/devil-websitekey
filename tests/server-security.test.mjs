@@ -71,6 +71,35 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('independent Finder test isolates premium keys, device-bound sessions, reports, filters and expiry from the main runtime',async()=>{
+    await reset();const adminUser=new Browser();await adminUser.login();
+    const premium=(await adminUser.call('admin/keys','POST',{kind:'days',amount:1,label:'finder fixture'})).data;
+    const a=new Browser(),b=new Browser(),jobA='12345678-1234-1234-1234-123456789abc',jobB='12345678-1234-1234-1234-123456789abd';
+    const input={key:premium.key,hwid:'finder-device-one',placeId:107778070777162,jobId:jobA};
+    assert.equal((await a.call('finder-test/session','POST',{...input,placeId:1})).status,400);
+    const session=await a.call('finder-test/session','POST',input);assert.equal(session.status,200);
+    assert.equal((await b.call('finder-test/session','POST',{...input,hwid:'finder-device-two'})).status,403);
+    const other=await b.call('finder-test/session','POST',{...input,jobId:jobB});assert.equal(other.status,200);
+    const eggs=[{uid:'field:one',name:'Fixture Dragon',rarity:'Divine',income:5e9,scale:10,mutation:'Golden'},{uid:'field:two',name:'Fixture Cat',rarity:'Rare',income:1000,scale:1,mutation:''}];
+    assert.equal((await a.call('finder-test/report','POST',{token:session.data.token,eggs})).status,200);
+    let feed=await b.call('finder-test/feed','POST',{token:other.data.token,minimum:1e9,rarity:'Divine',query:'golden'});
+    assert.equal(feed.status,200);assert.equal(feed.data.entries.length,1);assert.equal(feed.data.entries[0].jobId,jobA);assert.equal(feed.data.entries[0].placeId,107778070777162);
+    assert.equal((await b.call('finder-test/feed','POST',{token:other.data.token,rarity:'Rare'})).data.entries.length,1);
+    assert.equal((await a.call('finder-test/report','POST',{token:session.data.token,eggs:[...eggs,eggs[0]]})).status,400);
+    assert.equal((await a.call('finder-test/report','POST',{token:session.data.token,eggs:[{...eggs[0],income:-1}]})).status,400);
+    assert.equal((await b.call('finder-test/feed','POST',{token:'wrong'})).status,401);
+    assert.equal((await b.call('finder-test/feed','POST',{token:other.data.token},{origin:'https://evil.test'})).status,403);
+    clock+=120001;assert.equal((await b.call('finder-test/feed','POST',{token:other.data.token})).data.entries.length,0);
+    await client.execute({sql:'UPDATE access_keys SET source=? WHERE id=?',args:['steps',premium.id]});
+    assert.equal((await b.call('finder-test/feed','POST',{token:other.data.token})).status,403);
+    assert.equal((await b.call('finder-test/session','POST',{...input,jobId:jobB})).status,403);
+    await client.execute({sql:'UPDATE access_keys SET source=? WHERE id=?',args:['admin',premium.id]});
+    await client.execute({sql:'UPDATE key_devices SET hwid_hash=? WHERE key_id=?',args:['different-device',premium.id]});
+    assert.equal((await b.call('finder-test/feed','POST',{token:other.data.token})).status,403);
+    await client.execute({sql:'UPDATE key_devices SET hwid_hash=? WHERE key_id=?',args:[await hash('DEVIL-HWID:v1:finder-device-one'),premium.id]});
+    clock+=900001;assert.equal((await b.call('finder-test/feed','POST',{token:other.data.token})).status,401);
+    assert.equal((await client.execute("SELECT count(*) AS n FROM site_settings WHERE id='runtime:active'")).rows[0].n,0);
+  });
   await t.test('Google identity can claim and restore keys but never inherits Discord admin IDs',async()=>{
     await reset();env.GOOGLE_CLIENT_ID='integration.apps.googleusercontent.com';env.GOOGLE_CLIENT_SECRET='integration-only';
     const g=new Browser();await g.loginGoogle();const session=(await g.call('auth/session')).data;

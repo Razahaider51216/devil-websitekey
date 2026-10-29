@@ -10,6 +10,7 @@ import { discordRequired, requireLogin, requireDiscordAdmin, flowOwner, flowOwne
 import { plans, validPlan, planFor, type PlanId } from "./plans";
 import { handleScripts } from "./script-storage";
 import { handleRuntime } from "./runtime-storage";
+import { handleFinderTest } from "./finder-test";
 import { gamesSettingId, initialGames, orderedGames, validateGame, type SupportedGame } from "./supported-games";
 
 export const vars = () => env as unknown as Record<string, string>;
@@ -137,6 +138,10 @@ export async function presentKey(row: typeof keys.$inferSelect) {
 export async function handle(req: Request, path: string[]): Promise<Response> {
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   const db = getDb(), now = Date.now(), route = path.join("/");
+  if (path[0] === "finder-test") return handleFinderTest(req, path, { rate, validate: (original, input) => {
+    const headers = new Headers(original.headers); headers.set("Content-Type", "application/json"); headers.delete("Content-Length");
+    return handle(new Request(original.url, { method: "POST", headers, body: JSON.stringify(input) }), ["validate"]);
+  } });
   if (route === "games" && req.method === "GET") {
     const catalog = await gameCatalog();
     return json({ games: orderedGames(catalog.games, true) }, 200, { "Cache-Control": "public, max-age=60" });

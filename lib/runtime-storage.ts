@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { keys, keyDevices, siteSettings } from "../db/schema";
 import { hash, status } from "./domain";
 import { readJson, RequestError, requireOrigin, seal, unseal } from "./security";
+import { recordGameLaunch } from "./game-usage";
 
 type FileRecord = { sha256: string; bytes: number; checksum: number; entitlement?: "break-x2" };
 export type RuntimeManifest = { release: string; root: string; files: Record<string, FileRecord>; maps: number };
@@ -28,7 +29,7 @@ export function validateManifest(value: unknown): RuntimeManifest {
   if (!value || typeof value !== "object") fail(503, "Runtime manifest is invalid");
   const m = value as RuntimeManifest;
   releaseName(m.release);
-  if (![12, 13].includes(m.maps) || !m.files || typeof m.files !== "object" || Array.isArray(m.files)) fail(503, "Runtime manifest is incomplete");
+  if (![12, 13, 14].includes(m.maps) || !m.files || typeof m.files !== "object" || Array.isArray(m.files)) fail(503, "Runtime manifest is incomplete");
   const rows = Object.entries(m.files);
   if (!rows.length || rows.length > 150 || !Object.hasOwn(m.files, m.root)) fail(503, "Runtime entry is missing");
   for (const [name, file] of rows) {
@@ -74,6 +75,8 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
     const ticket = await seal({ ...pointer, keyHash: await hash(String(input.key).trim()), hwidHash: await hash("DEVIL-HWID:v1:" + String(input.hwid).trim()) }, "runtime-delivery", vars().KEY_SECRET || "", ttl);
     const prefix = new URL(`/api/runtime/files/${ticket}/`, req.url).href;
     const premiumFile = premium ? Object.keys(manifest.files).find(name => manifest.files[name].entitlement === "break-x2") : undefined;
+    // Statistics must never prevent an otherwise valid Key from opening the script.
+    try { await recordGameLaunch(input, keyRow!.keyHash, manifest.maps); } catch { console.warn("Game launch statistics unavailable"); }
     return json({ release: pointer.release, prefix, features: { premium, breakAutoX2: !!premiumFile }, premiumEntry: premiumFile ? prefix + premiumFile : null, entry: prefix + manifest.root, bytes: manifest.files[manifest.root].bytes,
       checksum: manifest.files[manifest.root].checksum, expiresAt: now + ttl });
   }

@@ -119,5 +119,15 @@ export const defaultGames = [
     "sortOrder": 11,
     "universeId": 10765013362,
     "placeId": 121831322352666
-  }
+  },
+  {
+    id: "throw-food-for-animals", name: "[🎃] Throw Food For Animals",
+    imageUrl: "/games/throw-food-for-animals.png", gameUrl: "https://www.roblox.com/games/120219252362013",
+    enabled: true, sortOrder: 12, universeId: 10766972131, placeId: 120219252362013,
+  },
+  {
+    id: "steal-a-pet-and-ride-it", name: "[🎃] Steal A Pet And Ride It!",
+    imageUrl: "/games/steal-a-pet-and-ride-it.png", gameUrl: "https://www.roblox.com/games/95168737547508",
+    enabled: true, sortOrder: 13, universeId: 10769315427, placeId: 95168737547508,
+  },
 ];

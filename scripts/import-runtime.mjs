@@ -10,7 +10,7 @@ const expectedAccount = "9507af231005e5cfc8290675b502c50e";
 const configuration = JSON.parse(readFileSync("cloudflare.config.json", "utf8"));
 const sha = value => createHash("sha256").update(value).digest("hex");
 const source = readFileSync(manifestPath), manifest = JSON.parse(source);
-if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(manifest.release) || ![12, 13].includes(manifest.maps) || !manifest.files?.[manifest.root]) throw new Error("Invalid runtime manifest");
+if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(manifest.release) || ![12, 13, 14].includes(manifest.maps) || !manifest.files?.[manifest.root]) throw new Error("Invalid runtime manifest");
 const blobs = new Map();
 for (const [name, record] of Object.entries(manifest.files)) {
   if (!/^[a-f0-9]{40}\/[a-zA-Z0-9_./-]+$/.test(name) || name.split("/").some(x => x === "..") || !/^[a-f0-9]{64}$/.test(record.sha256)) throw new Error("Invalid runtime file");

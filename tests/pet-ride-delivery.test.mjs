@@ -13,26 +13,19 @@ registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context);
 } });
 const { GET } = await import("../app/test/pet-ride/route.ts");
-test("pet preview and logo use only fixed R2 keys and never arbitrary file parameters", async () => {
-  const keys = [];
-  settings.SCRIPT_FILES = { get: async key => { keys.push(key); return { body: "fixture" }; } };
-  const response = await GET(new Request("https://devil-hub.dev/test/pet-ride?file=secrets"));
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.equal(await response.text(), "fixture");
-  const logo = await GET(new Request("https://devil-hub.dev/test/pet-ride?asset=logo"));
-  assert.equal(logo.headers.get("content-type"), "image/png");
-  assert.deepEqual(keys, ["tests/pet-ride/20261030-7.lua", "tests/pet-ride/20261029-1-logo.png"]);
+test("old pet preview delegates to the Key-protected main loader", async () => {
+  settings.SCRIPT_FILES = { get: async () => { throw new Error("must not fetch preview"); } };
+  for (const query of ["?v=7", "?asset=logo", "?file=secrets"]) {
+    const response = await GET(new Request("https://devil-hub.dev/test/pet-ride" + query));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(await response.text(), 'return loadstring(game:HttpGet("https://devil-hub.dev/loader"))()\n');
+  }
 });
+
 test("browser navigation shows the existing script landing without fetching Lua", async () => {
   settings.SCRIPT_FILES = { get: async () => { throw new Error("must not fetch"); } };
   const response = await GET(new Request("https://devil-hub.dev/test/pet-ride", { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }));
   assert.equal(response.status, 403);
   assert.match(await response.text(), /Huh/);
-});
-test("missing preview returns a recoverable 503", async () => {
-  delete settings.SCRIPT_FILES;
-  const response = await GET(new Request("https://devil-hub.dev/test/pet-ride"));
-  assert.equal(response.status, 503);
-  assert.equal(response.headers.get("cache-control"), "no-store");
 });

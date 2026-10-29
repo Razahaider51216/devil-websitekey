@@ -27,7 +27,8 @@ test("runtime supports the thirteenth map while retaining the old release and me
   const manifest = { release: "runtime-throw-food-20261029-2", maps: 13, root, files: { [root]: { sha256: "b".repeat(64), bytes: 100, checksum: 123 } } };
   assert.equal(validateManifest(manifest).maps, 13);
   assert.equal(validateManifest({ ...manifest, maps: 12 }).maps, 12);
-  for (const maps of [0, 11, 14, "13"]) assert.throws(() => validateManifest({ ...manifest, maps }));
+  assert.equal(validateManifest({ ...manifest, maps: 14 }).maps, 14);
+  for (const maps of [0, 11, 15, "13"]) assert.throws(() => validateManifest({ ...manifest, maps }));
   assert.throws(() => validateManifest({ ...manifest, files: { [root]: { ...manifest.files[root], bytes: 0 } } }));
 });
 test("browser document navigation does not expose the prototype", async () => {

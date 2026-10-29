@@ -13,6 +13,7 @@ import { handleRuntime } from "./runtime-storage";
 import { handleFinderTest } from "./finder-test";
 import { resetPremiumHwid, resetSettingId } from "./discord-hwid-reset";
 import { gamesSettingId, initialGames, orderedGames, validateGame, type SupportedGame } from "./supported-games";
+import { gameUsage } from "./game-usage";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -148,7 +149,9 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
   } });
   if (route === "games" && req.method === "GET") {
     const catalog = await gameCatalog();
-    return json({ games: orderedGames(catalog.games, true) }, 200, { "Cache-Control": "public, max-age=60" });
+    const games = orderedGames(catalog.games, true);
+    try { return json(await gameUsage(games), 200, { "Cache-Control": "public, max-age=60" }); }
+    catch { return json({ games: games.map(game => ({ ...game, launches: null })), trackingSince: null }, 200, { "Cache-Control": "no-store" }); }
   }
   if (path[0] === "runtime" || route === "admin/runtime") {
     return handleRuntime(req, path, { admin, rate, validate: (original, input) => {

@@ -438,7 +438,8 @@ test('server security integration',async t=>{
     const source=new TextEncoder().encode('return "unchanged runtime"');let checksum=0;for(const byte of source)checksum=(checksum*33+byte)>>>0;
     const ref='a'.repeat(40),file=ref+'/loader',release='runtime-fixture-1';
     const premiumFile=ref+'/premium/break-x2.lua';
-    const manifest={release,root:file,maps:12,files:{[file]:{sha256:sha(source),bytes:source.length,checksum},[premiumFile]:{sha256:sha(source),bytes:source.length,checksum,entitlement:'break-x2'}}};
+    const throwFoodFile=ref+'/throw-food-for-animals.lua';
+    const manifest={release,root:file,maps:13,files:{[file]:{sha256:sha(source),bytes:source.length,checksum},[throwFoodFile]:{sha256:sha(source),bytes:source.length,checksum},[premiumFile]:{sha256:sha(source),bytes:source.length,checksum,entitlement:'break-x2'}}};
     const manifestBytes=new TextEncoder().encode(JSON.stringify(manifest));const pointer={release,sha256:sha(manifestBytes)};
     data.set(manifestKey(release),manifestBytes);
     const created=(await b.call('admin/keys','POST',{kind:'permanent',amount:0,label:'runtime'})).data;
@@ -468,6 +469,7 @@ test('server security integration',async t=>{
     assert.equal((await fetchFile(ordinary.data.prefix+premiumFile)).status,403,'forged client flags cannot download premium code');
     assert.equal((await fetchFile(ordinary.data.prefix+'main/premium/break-x2.lua')).status,403,'legacy aliases cannot bypass premium entitlement');
     assert.equal((await fetchFile(ordinary.data.entry)).status,200,'standard keys retain regular maps');
+    assert.equal((await fetchFile(ordinary.data.prefix+throwFoodFile)).status,200,'the thirteenth map requires the same validated key and HWID session');
     const browserRequest=new Request(result.data.entry,{headers:{accept:'text/html','sec-fetch-mode':'navigate'}});
     const browserResponse=await handle(browserRequest,new URL(result.data.entry).pathname.slice(5).split('/'));
     assert.equal(browserResponse.status,403);assert.match(await browserResponse.text(),/Huh, what are you doing here\?/);

@@ -29,14 +29,17 @@ Components V2 container with no accent color or legacy embed. Image comes from
 
 ```
 # DEVIL HUB
-Reset HWID For Key Premium
-Get Key Free to Website
+> `Reset HWID` For Key Premium
+> `Get Key` Free to Website
 ────────────────────────
 [Reset Hwid] [Get Key ↗] [Info]
 ```
 
 Get Key opens https://devil-hub.dev. Info is visible only to the clicker. Reset
 opens a modal; key input/results are never posted publicly or logged.
+Reset Hwid is a green Success button. Info uses a yellow-square emoji on a
+Secondary button because Discord does not support a yellow button style.
+Info displays both Thai and English instructions in the same private message.
 
 ## Reset rules
 

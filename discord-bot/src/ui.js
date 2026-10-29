@@ -9,12 +9,12 @@ export function panel(website) {
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL('attachment://devilhub.png').setDescription('DEVIL HUB')))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('# DEVIL HUB'),
-      new TextDisplayBuilder().setContent('Reset HWID For Key Premium\nGet Key Free to Website'))
+      new TextDisplayBuilder().setContent('> `Reset HWID` For Key Premium\n> `Get Key` Free to Website'))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(ids.reset).setLabel('Reset Hwid').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(ids.reset).setLabel('Reset Hwid').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setURL(website).setLabel('Get Key').setStyle(ButtonStyle.Link),
-      new ButtonBuilder().setCustomId(ids.info).setLabel('Info').setStyle(ButtonStyle.Secondary)));
+      new ButtonBuilder().setCustomId(ids.info).setLabel('Info').setEmoji('🟨').setStyle(ButtonStyle.Secondary)));
   return { flags: MessageFlags.IsComponentsV2, components: [container],
     files: [new AttachmentBuilder(fileURLToPath(new URL('../assets/devilhub.png', import.meta.url)), { name: 'devilhub.png' })],
     allowedMentions: { parse: [] } };
@@ -27,5 +27,27 @@ export function resetModal() {
       .setStyle(TextInputStyle.Short).setMinLength(41).setMaxLength(100).setRequired(true)));
 }
 export function info(website) {
-  return `**วิธีรับและใช้ Key**\n1. กด Get Key เพื่อเปิด ${website}\n2. เข้าสู่ระบบ เลือกโหมด และทำภารกิจบนเว็บให้ครบ\n3. คัดลอก Key ไปใส่ในสคริปต์ DEVIL HUB\n\n**วิธี Reset HWID**\nปิดสคริปต์ที่เครื่องเก่าก่อน กด Reset Hwid แล้วใส่คีย์ Premium ที่แอดมินสร้างและยังไม่หมดอายุ\nเมื่อสำเร็จ ให้นำคีย์เดิมไปรันบนเครื่องใหม่เพื่อผูก HWID ใหม่ วันหมดอายุคงเดิม\nคีย์ Free รีเซ็ตผ่านบอทไม่ได้ รีเซ็ตซ้ำได้หลัง 5 นาที และเครื่องเก่าจะผูกกลับไม่ได้ 10 นาที\nคีย์และผลการรีเซ็ตจะแสดงเฉพาะคุณ`;
+  return [
+    '**🇹🇭 ภาษาไทย**',
+    '**วิธีรับและใช้ Key**',
+    `> 1. กด \`Get Key\` เพื่อเปิด ${website}`,
+    '> 2. เข้าสู่ระบบ เลือกโหมด และทำภารกิจให้ครบ',
+    '> 3. คัดลอกคีย์ไปใส่ในสคริปต์ DEVIL HUB',
+    '**วิธีรีเซ็ต HWID**',
+    '> ปิดสคริปต์เครื่องเก่าก่อน กด `Reset Hwid` แล้วใส่คีย์ Premium ที่แอดมินสร้างและยังใช้งานได้',
+    '> เมื่อสำเร็จ ใช้คีย์เดิมบนเครื่องใหม่เพื่อผูก HWID ใหม่ วันหมดอายุคงเดิม',
+    '> คีย์ Free รีเซ็ตไม่ได้ รอ 5 นาทีระหว่างการรีเซ็ต เครื่องเก่าจะผูกกลับไม่ได้ 10 นาที',
+    '> คีย์และผลการรีเซ็ตแสดงเฉพาะคุณ อย่าแชร์คีย์ให้ผู้อื่น',
+    '',
+    '**🇬🇧 English**',
+    '**Get and use your key**',
+    `> 1. Click \`Get Key\` to open ${website}`,
+    '> 2. Sign in, choose a plan and complete its tasks.',
+    '> 3. Copy your key into the DEVIL HUB script.',
+    '**Reset your HWID**',
+    '> Close the script on your old device. Click `Reset Hwid` and enter an active, admin-created Premium key.',
+    '> After a successful reset, use the same key on your new device to bind it. The expiry date stays the same.',
+    '> Free keys cannot reset. Wait 5 minutes between resets. The old device cannot rebind for 10 minutes.',
+    '> Your key and reset result are visible only to you. Never share your key.',
+  ].join('\n');
 }

@@ -15,10 +15,13 @@ test('panel is Components V2 with top image, exact copy, separator and no accent
   assert.equal(container.components[0].type, 12);
   assert.equal(container.components[0].items[0].media.url, 'attachment://devilhub.png');
   assert.equal(container.components[1].content, '# DEVIL HUB');
-  assert.equal(container.components[2].content, 'Reset HWID For Key Premium\nGet Key Free to Website');
+  assert.equal(container.components[2].content, '> `Reset HWID` For Key Premium\n> `Get Key` Free to Website');
   assert.equal(container.components[3].divider, true);
   const buttons = container.components[4].components;
   assert.deepEqual(buttons.map(x => x.label), ['Reset Hwid', 'Get Key', 'Info']);
+  assert.equal(buttons[0].style, 3);
+  assert.equal(buttons[2].style, 2);
+  assert.equal(buttons[2].emoji.name, '🟨');
   assert.equal(buttons[1].url, 'https://devil-hub.dev');
   assert.deepEqual(payload.allowedMentions.parse, []);
   assert.equal(readFileSync(new URL('../assets/devilhub.png', import.meta.url)).subarray(1, 4).toString(), 'PNG');
@@ -34,6 +37,11 @@ test('modal contains a private key input, not a message or public key response',
   assert.equal(modal.custom_id, 'devilhub:hwid:submit');
   assert.equal(modal.components[0].components[0].custom_id, 'premium_key');
   assert.match(info('https://devil-hub.dev'), /5 นาที/);
+  const help = info('https://devil-hub.dev');
+  assert.match(help, /ภาษาไทย/);
+  assert.match(help, /English/);
+  assert.match(help, /Free keys cannot reset/);
+  assert.ok(help.length <= 2000, 'Help fits one ephemeral Discord message');
 });
 test('reset client sends one bounded authenticated POST and does not echo the key', async () => {
   const key = 'DEVIL-private-fixture';

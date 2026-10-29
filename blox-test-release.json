@@ -1,0 +1,24 @@
+{
+  "release": "blox-progression-test-20261029-1",
+  "keyRequired": false,
+  "mainLoaderChanged": false,
+  "liveRobloxVerified": false,
+  "key": "tests/blox-progression/20261029-1.lua",
+  "bytes": 757798,
+  "sha256": "882cfe0f0b9c78924ebcf349c004c09683a5fc3639c4223c42fc0fc8b7ef87d6",
+  "sources": {
+    "preview\\OuroFlow.lua": "0c30762d3c9c3aa7c25ca3aeceab960a771c96b5af290a3b67aed627161385f5",
+    "devil-blue-gui.lua": "36a40f149af9136d1cf1bbf8e2923920fdd5b7a3e90a00a53d913e07fac93f9d",
+    "tools\\blox-test\\data.lua": "ba60bbc3d0bef770a748c0c0d37a3b2b6d4d2eacb7977489957c11ae51696c85",
+    "tools\\blox-test\\core.lua": "5c7140d6db7a62882c1e3c87d37bd31cfe24e2dcd853625caa31ee12b5405d70",
+    "tools\\blox-test\\runtime.lua": "bcfddb11f3ab5ec22ac198f5fb5bca1b684939b1092b604e4c021d70d502af86"
+  },
+  "workerVersion": "27f98f56-b0b9-40c2-bc6a-04f4b3efce8f",
+  "testURL": "https://devil-hub.dev/test/blox-progress",
+  "liveHTTP": 200,
+  "liveDeliveryHashVerified": true,
+  "mainRuntimePointersUnchanged": true,
+  "webTestsPassed": 51,
+  "luauCompilePassed": true,
+  "luaCommit": "b2438cf"
+}

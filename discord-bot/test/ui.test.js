@@ -21,7 +21,9 @@ test('panel is Components V2 with top image, exact copy, separator and no accent
   assert.deepEqual(buttons.map(x => x.label), ['Reset Hwid', 'Get Key', 'Info']);
   assert.equal(buttons[0].style, 3);
   assert.equal(buttons[2].style, 2);
-  assert.equal(buttons[2].emoji.name, '🟨');
+  assert.deepEqual(buttons[0].emoji, { id: '1565299333794889778', name: 'watergear', animated: false });
+  assert.equal(buttons[1].emoji.name, '🔑');
+  assert.deepEqual(buttons[2].emoji, { id: '1565299349099909120', name: 'jungwad_', animated: true });
   assert.equal(buttons[1].url, 'https://devil-hub.dev');
   assert.deepEqual(payload.allowedMentions.parse, []);
   assert.equal(readFileSync(new URL('../assets/devilhub.png', import.meta.url)).subarray(1, 4).toString(), 'PNG');

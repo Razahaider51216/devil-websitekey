@@ -37,8 +37,9 @@ Components V2 container with no accent color or legacy embed. Image comes from
 
 Get Key opens https://devil-hub.dev. Info is visible only to the clicker. Reset
 opens a modal; key input/results are never posted publicly or logged.
-Reset Hwid is a green Success button. Info uses a yellow-square emoji on a
-Secondary button because Discord does not support a yellow button style.
+Reset Hwid is a green Success button with `watergear` (`1565299333794889778`).
+Get Key uses 🔑. Info is a Secondary button with the animated `jungwad_`
+emoji (`1565299349099909120`).
 Info displays both Thai and English instructions in the same private message.
 
 ## Reset rules

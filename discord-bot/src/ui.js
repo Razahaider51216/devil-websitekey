@@ -12,9 +12,11 @@ export function panel(website) {
       new TextDisplayBuilder().setContent('> `Reset HWID` For Key Premium\n> `Get Key` Free to Website'))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(ids.reset).setLabel('Reset Hwid').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setURL(website).setLabel('Get Key').setStyle(ButtonStyle.Link),
-      new ButtonBuilder().setCustomId(ids.info).setLabel('Info').setEmoji('🟨').setStyle(ButtonStyle.Secondary)));
+      new ButtonBuilder().setCustomId(ids.reset).setLabel('Reset Hwid')
+        .setEmoji({ id: '1565299333794889778', name: 'watergear', animated: false }).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setURL(website).setLabel('Get Key').setEmoji('🔑').setStyle(ButtonStyle.Link),
+      new ButtonBuilder().setCustomId(ids.info).setLabel('Info')
+        .setEmoji({ id: '1565299349099909120', name: 'jungwad_', animated: true }).setStyle(ButtonStyle.Secondary)));
   return { flags: MessageFlags.IsComponentsV2, components: [container],
     files: [new AttachmentBuilder(fileURLToPath(new URL('../assets/devilhub.png', import.meta.url)), { name: 'devilhub.png' })],
     allowedMentions: { parse: [] } };

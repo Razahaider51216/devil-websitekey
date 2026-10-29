@@ -1,6 +1,6 @@
 # Mission OnClick advertising
 
-The original supplied tag is loaded once per document on the authenticated Free Get Key mission page for 6H, 12H and 24H: `https://al5sm.com/tag.min.js`, zone `12144051`. There is no SmartLink, per-button restriction, custom frequency cap, popup override, synthetic click, automatic retry or ad-completion requirement. Monetag controls ad delivery. A notice explains that ads can be closed without clicking them.
+The original supplied tag is loaded once per document on the authenticated Free Get Key mission page for 6H, 12H and 24H: `https://al5sm.com/tag.min.js`, zone `12144051`. There is no SmartLink, per-button restriction, custom frequency cap, popup override, synthetic click, automatic retry or ad-completion requirement. Monetag controls ad delivery.
 
 The script is not loaded in the root layout, Login, Admin, Supported Games, the plan picker or the issued-key view. Leaving missions for the plan picker performs a full navigation. Receiving a key reloads the document once, so script-installed listeners do not persist on the key view. Existing navigation links and logout use full document navigation. Removing a script element alone cannot remove its third-party event listeners.
 

@@ -22,7 +22,7 @@ test("pet preview and logo use only fixed R2 keys and never arbitrary file param
   assert.equal(await response.text(), "fixture");
   const logo = await GET(new Request("https://devil-hub.dev/test/pet-ride?asset=logo"));
   assert.equal(logo.headers.get("content-type"), "image/png");
-  assert.deepEqual(keys, ["tests/pet-ride/20261029-1.lua", "tests/pet-ride/20261029-1-logo.png"]);
+  assert.deepEqual(keys, ["tests/pet-ride/20261029-2.lua", "tests/pet-ride/20261029-1-logo.png"]);
 });
 test("browser navigation shows the existing script landing without fetching Lua", async () => {
   settings.SCRIPT_FILES = { get: async () => { throw new Error("must not fetch"); } };

@@ -52,7 +52,7 @@ export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, 
   return <article className={`bot-step ${passed ? "step-done" : ""}`}>
     <div className="eyebrow">{action === "devil-key-login" ? "SECURITY CHECK" : `STEP ${String(stepNumber).padStart(2, "0")}`} / <ShieldCheck size={14}/></div>
     <h3>{t("ยืนยันว่าไม่ใช่บอท")}</h3>
-    <p>{t(action === "devil-key-login" ? "ยืนยันก่อนเข้าสู่ระบบ Discord" : "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
+    <p>{t(action === "devil-key-login" ? "ยืนยันก่อนเข้าสู่ระบบ" : "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
     {passed ? <span className="done-label"><Check size={14}/>{t("เรียบร้อย")}</span> : !unlocked ? <span className="private-note"><LockKeyhole size={14}/>{t("กรุณาทำขั้นตอนก่อนหน้าให้ครบ")}</span> : !siteKey ? <p>{t("ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท")}</p> : <div ref={node}/>}
     {failed && <button type="button" className="quiet-button" onClick={() => setRetry(v => v + 1)}>{t("ลองอีกครั้ง")}</button>}
   </article>;

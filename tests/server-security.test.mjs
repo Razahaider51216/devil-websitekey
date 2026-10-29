@@ -26,16 +26,27 @@ let clock=1800000000000;
 const realNow=Date.now, realFetch=globalThis.fetch;
 Date.now=()=>clock;
 let client, challenge, captchaAction='devil-key-login', identity='123456789012345678', exchanges=0;
+let googleNonce='',googleSubject='123456789012345678',googleExchanges=0,googleBadNonce=false;
+const googlePair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
+const googleJwk={...await crypto.subtle.exportKey('jwk',googlePair.publicKey),kid:'integration-google',alg:'RS256',use:'sig'};
+async function googleToken(){
+  const now=Math.floor(clock/1000),encode=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
+  const message=encode({alg:'RS256',kid:googleJwk.kid})+'.'+encode({iss:'https://accounts.google.com',aud:env.GOOGLE_CLIENT_ID,sub:googleSubject,nonce:googleBadNonce?'wrong':googleNonce,iat:now,exp:now+3600,name:'Google tester',picture:'https://lh3.googleusercontent.com/a/test'});
+  return message+'.'+Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',googlePair.privateKey,new TextEncoder().encode(message))).toString('base64url');
+}
 globalThis.fetch=async(url,options)=>{
   if(String(url).includes('siteverify'))return Response.json({success:options.body.get('response')==='valid-token',hostname:'example.test',action:captchaAction,cdata:challenge});
   if(String(url).endsWith('/oauth2/token')){exchanges++;return Response.json({access_token:'private',token_type:'Bearer'});}
   if(String(url).endsWith('/users/@me'))return Response.json({id:identity,username:'tester'});
+  if(String(url)==='https://oauth2.googleapis.com/token'){googleExchanges++;assert.ok(options.body.get('code_verifier'));return Response.json({id_token:await googleToken()});}
+  if(String(url)==='https://www.googleapis.com/oauth2/v3/certs')return Response.json({keys:[googleJwk]});
   throw new Error('Unexpected external HTTP blocked');
 };
 async function reset(){
   client?.close();client=createClient({url:':memory:'});globalThis.__securityDb=drizzle(client,{schema});
   for(const name of readdirSync(new URL('../drizzle/',import.meta.url)).filter(x=>x.endsWith('.sql')).sort())await client.executeMultiple(readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
   clock+=600000;env.DISCORD_LOGIN_REQUIRED='1';env.TURNSTILE_SECRET_KEY='test-secret';identity='123456789012345678';exchanges=0;
+  env.GOOGLE_CLIENT_ID='';env.GOOGLE_CLIENT_SECRET='';googleNonce='';googleSubject=identity;googleExchanges=0;googleBadNonce=false;
 }
 class Browser {
   jar=new Map();ip=crypto.randomUUID();
@@ -52,8 +63,46 @@ class Browser {
     const result=await this.call('auth/discord/callback?state='+state+'&code=code');
     assert.equal(result.headers.get('location'),'/');return state;
   }
+  async startGoogle(){
+    const session=await this.call('auth/session');challenge=session.data.challenge;captchaAction='devil-key-login';
+    assert.equal(session.data.providers.google,true);const start=await this.call('auth/google/start','POST',{token:'valid-token'});assert.equal(start.status,200);
+    const url=new URL(start.data.url);assert.equal(url.origin,'https://accounts.google.com');googleNonce=url.searchParams.get('nonce');return url.searchParams.get('state');
+  }
+  async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('Google identity can claim and restore keys but never inherits Discord admin IDs',async()=>{
+    await reset();env.GOOGLE_CLIENT_ID='integration.apps.googleusercontent.com';env.GOOGLE_CLIENT_SECRET='integration-only';
+    const g=new Browser();await g.loginGoogle();const session=(await g.call('auth/session')).data;
+    assert.equal(session.user.provider,'google');assert.equal(session.user.id,'google:123456789012345678');assert.equal(session.user.isAdmin,false);
+    assert.equal((await g.call('admin/keys')).status,403,'Google numeric sub must not collide with Discord admin allowlist');
+    await readySix(g);const issued=await g.call('flow/claim','POST',{});assert.equal(issued.status,200);
+    assert.equal((await client.execute('select owner_id from access_keys')).rows[0].owner_id,session.user.id);
+    const same=new Browser();await same.loginGoogle();assert.equal((await same.call('flow')).data.key.key,issued.data.key);
+    const discord=new Browser();await discord.login();assert.equal((await discord.call('flow/select','POST',{plan:'6h'})).data.key,null,'providers are never silently linked');
+    assert.equal((await discord.call('admin/keys')).status,200,'existing Discord admin access is preserved');
+    const replay=new Browser();replay.jar=new Map(g.jar);await g.call('auth/logout','POST',{});
+    assert.equal((await replay.call('flow')).status,401,'Google logout revokes the server-side session');
+  });
+  await t.test('Google requires CAPTCHA, matching one-use state, PKCE and a valid signed nonce',async()=>{
+    await reset();env.GOOGLE_CLIENT_ID='integration.apps.googleusercontent.com';env.GOOGLE_CLIENT_SECRET='integration-only';
+    const b=new Browser();const s=await b.call('auth/session');challenge=s.data.challenge;
+    assert.equal((await b.call('auth/google/start','POST',{token:'valid-token'},{origin:'https://evil.test'})).status,403);
+    assert.equal((await b.call('auth/google/start','POST',{token:'invalid'})).status,400);
+    const state=await b.startGoogle();const mismatch=await b.call('auth/google/callback?state=wrong&code=code');assert.match(mismatch.headers.get('location'),/LOGIN_STATE_MISMATCH/);assert.equal(googleExchanges,0);
+    const state2=await b.startGoogle();googleBadNonce=true;
+    const bad=await b.call('auth/google/callback?state='+state2+'&code=code');assert.match(bad.headers.get('location'),/GOOGLE_TOKEN_INVALID/);
+    assert.equal((await b.call('auth/session')).data.user,null);
+    googleBadNonce=false;const state3=await b.startGoogle();const oldCookies=new Browser();oldCookies.jar=new Map(b.jar);
+    assert.equal((await b.call('auth/google/callback?state='+state3+'&code=code')).headers.get('location'),'/');
+    const replay=await b.call('auth/google/callback?state='+state3+'&code=code');assert.match(replay.headers.get('location'),/LOGIN_COOKIE_MISSING/);
+    assert.match((await oldCookies.call('auth/google/callback?state='+state3+'&code=code')).headers.get('location'),/LOGIN_STATE_EXPIRED/);
+    assert.equal(googleExchanges,2,'invalid nonce and successful login exchange only once each');
+    const mix=new Browser(),mixedState=await mix.startGoogle();assert.match((await mix.call('auth/discord/callback?state='+mixedState+'&code=code')).headers.get('location'),/LOGIN_COOKIE_MISSING/);
+    assert.equal(googleExchanges,2,'Discord callback cannot consume Google authorization state');
+    const disabled=new Browser();env.GOOGLE_CLIENT_SECRET='';assert.equal((await disabled.call('auth/google/start','POST',{token:'valid-token'})).status,503);
+    assert.equal((await disabled.call('auth/session')).data.providers.discord,true);
+  });
   await t.test('supported games seed, Discord-admin CRUD, safe links, visibility and concurrent editing',async()=>{
     await reset();const guest=new Browser(),owner=new Browser(),member=new Browser();
     const seeded=await guest.call('games');assert.equal(seeded.status,200);assert.equal(seeded.data.games.length,12);

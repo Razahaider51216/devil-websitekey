@@ -8,18 +8,20 @@ import { cookie, cookieName, cookieValue, readJson, RequestError, requireOrigin,
 import { verifyTurnstile } from "./turnstile";
 import { DiscordLoginError, loginFailureCode } from "./login-failure";
 import { serviceErrorCode } from "./service-errors";
+import { googleConfigured, googleUser, handleGoogle } from "./google-auth";
 
 const v = () => env as unknown as Record<string, string>;
 export function discordRequired() { return v().DISCORD_LOGIN_REQUIRED === "1"; }
 const configured = () => /^\d{15,22}$/.test(v().DISCORD_CLIENT_ID || "") && !!v().DISCORD_CLIENT_SECRET && !!v().TURNSTILE_SITE_KEY && !!v().TURNSTILE_SECRET_KEY;
 const secret = () => v().KEY_SECRET || "";
 const read = (req: Request, name: string, purpose: string) => unseal(cookieValue(req, cookieName(req, name)), purpose, secret());
-export type DiscordUser = { id: string; name: string; session: string; avatar?: unknown; decoration?: unknown; discriminator?: unknown };
+export type DiscordUser = { id: string; name: string; session: string; avatar?: unknown; decoration?: unknown; discriminator?: unknown; provider: "discord" };
 export function isDiscordAdmin(id: string) {
   return (v().DISCORD_ADMIN_USER_IDS || "").split(/[\s,]+/).filter(value => /^\d{15,22}$/.test(value)).includes(id);
 }
 export async function requireDiscordAdmin(req: Request) {
   const user = await discordUser(req);
+  if (!user && await googleUser(req)) throw new RequestError(403, "Use an authorized Discord administrator account for admin access.");
   if (!user) throw new RequestError(401, "Please sign in with Discord first");
   if (!isDiscordAdmin(user.id)) throw new RequestError(403, "Only authorized administrators can access this page.");
   return user;
@@ -28,15 +30,16 @@ export async function discordUser(req: Request): Promise<DiscordUser | null> {
   const data = await read(req, "devil_auth", "discord-session");
   if (!data || typeof data.id !== "string" || !/^\d{15,22}$/.test(data.id) || typeof data.name !== "string" || typeof data.session !== "string") return null;
   const record = await getDb().select().from(limits).where(eq(limits.id, "discord-session:" + await hash(data.session))).get();
-  return record && record.hits === 0 && record.expiresAt > Date.now() ? { id: data.id, name: data.name, session: data.session, avatar: data.avatar, decoration: data.decoration, discriminator: data.discriminator } : null;
+  return record && record.hits === 0 && record.expiresAt > Date.now() ? { id: data.id, name: data.name, session: data.session, avatar: data.avatar, decoration: data.decoration, discriminator: data.discriminator, provider: "discord" } : null;
 }
-export async function requireDiscord(req: Request) {
+export async function requireLogin(req: Request) {
   if (!discordRequired()) return null;
-  if (!configured()) throw new RequestError(503, "Discord login is not configured. Please contact the administrator.");
-  const user = await discordUser(req);
-  if (!user) throw new RequestError(401, "Please sign in with Discord first");
+  if (!configured() && !googleConfigured()) throw new RequestError(503, "Login is not configured. Please contact the administrator.");
+  const user = await discordUser(req) || await googleUser(req);
+  if (!user) throw new RequestError(401, "Please sign in with Google or Discord first");
   return user;
 }
+export const requireDiscord = requireLogin;
 export async function flowOwner(req: Request, flowId: string, userId: string) {
   const data = await read(req, "devil_flow_owner", "flow-owner");
   return data?.flowId === flowId && data?.userId === userId;
@@ -51,17 +54,21 @@ function response(data: unknown, cookies: string[] = [], status = 200, headers: 
 }
 const redirectUri = (req: Request) => new URL("/api/auth/discord/callback", req.url).href;
 export async function handleDiscord(req: Request, route: string, rate: (req: Request, kind: string, max: number) => Promise<void>) {
+  if (route.startsWith("auth/google/")) return handleGoogle(req, route, rate);
   if (route === "auth/session" && req.method === "GET") {
     if (!discordRequired()) return response({ required: false, user: null });
-    const ready = configured(), user = ready ? await discordUser(req) : null;
-    if (user) return response({ required: true, configured: true, user: { id: user.id, name: user.name, isAdmin: isDiscordAdmin(user.id), ...discordMedia(user.id, user.avatar, user.decoration, user.discriminator) } });
+    const providers = { discord: configured(), google: googleConfigured() }, ready = providers.discord || providers.google;
+    const user = ready ? await discordUser(req) || await googleUser(req) : null;
+    if (user) return response({ required: true, configured: true, providers, user: user.provider === "google"
+      ? { id: user.id, name: user.name, provider: "google", isAdmin: false, avatarUrl: user.avatarUrl, decorationUrl: null }
+      : { id: user.id, name: user.name, provider: "discord", isAdmin: isDiscordAdmin(user.id), ...discordMedia(user.id, user.avatar, user.decoration, user.discriminator) } });
     await rate(req, "login-page", 60);
     let pending = await read(req, "devil_login", "login-captcha"); const cookies: string[] = [];
     if (!pending || typeof pending.nonce !== "string") {
       pending = { nonce: crypto.randomUUID() };
       cookies.push(cookie(req, "devil_login", await seal(pending, "login-captcha", secret(), 600_000), 600));
     }
-    return response({ required: true, configured: ready, user: null, siteKey: v().TURNSTILE_SITE_KEY || "", challenge: await hash("discord-login:" + pending.nonce) }, cookies);
+    return response({ required: true, configured: ready, providers, user: null, siteKey: v().TURNSTILE_SITE_KEY || "", challenge: await hash("discord-login:" + pending.nonce) }, cookies);
   }
   if (route === "auth/discord/start" && req.method === "POST") {
     requireOrigin(req); await rate(req, "discord-start", 10);
@@ -104,9 +111,9 @@ export async function handleDiscord(req: Request, route: string, rate: (req: Req
     }
   }
   if (route === "auth/logout" && req.method === "POST") {
-    requireOrigin(req); await rate(req, "logout", 20); const user = await discordUser(req);
-    if (user) await getDb().update(limits).set({ hits: 1 }).where(eq(limits.id, "discord-session:" + await hash(user.session)));
-    return response({ ok: true }, [cookie(req, "devil_auth", "", 0), cookie(req, "devil_flow_owner", "", 0), "devil_flow=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0" + (new URL(req.url).protocol === "https:" ? "; Secure" : "")]);
+    requireOrigin(req); await rate(req, "logout", 20); const user = await discordUser(req) || await googleUser(req);
+    if (user) await getDb().update(limits).set({ hits: 1 }).where(eq(limits.id, user.provider + "-session:" + await hash(user.session)));
+    return response({ ok: true }, [cookie(req, "devil_auth", "", 0), cookie(req, "devil_flow_owner", "", 0), cookie(req, "devil_google_oauth", "", 0), cookie(req, "devil_oauth", "", 0), cookie(req, "devil_login", "", 0), "devil_flow=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0" + (new URL(req.url).protocol === "https:" ? "; Secure" : "")]);
   }
   throw new RequestError(404, "Not found");
 }

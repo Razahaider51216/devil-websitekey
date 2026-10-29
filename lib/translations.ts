@@ -1,5 +1,14 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "หรือ": "or",
+  "ยืนยันก่อนเข้าสู่ระบบ": "Verify you are human before signing in",
+  "เข้าสู่ระบบด้วย Google หรือ Discord ก่อนรับคีย์ DEVIL HUB": "Sign in with Google or Discord to get your DEVIL HUB key",
+  "ใช้เฉพาะข้อมูลโปรไฟล์เพื่อยืนยันตัวตน": "We only use your profile to verify your identity.",
+  "เข้าสู่ระบบด้วย Google": "Sign in with Google",
+  "Google ยังไม่พร้อมใช้งาน": "Google sign-in is not configured yet",
+  "หลังบ้านใช้บัญชี Discord ของแอดมิน": "Admin access requires an authorized Discord account.",
+  "ออกจากระบบเพื่อเปลี่ยนบัญชี": "Sign out to switch accounts",
+  "แอดมินยังไม่ได้ตั้งค่าระบบเข้าสู่ระบบ": "Sign-in has not been configured by the administrator.",
   "แมพที่รองรับ": "Supported games",
   "ภาพรวม": "Overview",
   "จัดการคีย์": "Access keys",

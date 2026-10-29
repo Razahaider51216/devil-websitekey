@@ -1,0 +1,16 @@
+{
+  "workerVersion": "ba2d38d8-9fe5-4edf-92ec-2382bab4418d",
+  "testsPassed": 48,
+  "typecheck": "passed",
+  "build": "passed",
+  "browserDesktop": "passed",
+  "browserMobile": "passed",
+  "liveSessionStatus": 200,
+  "liveProviders": {
+    "discord": true,
+    "google": false
+  },
+  "realGoogleOAuthVerified": false,
+  "adminProvider": "discord",
+  "automaticAccountLinking": false
+}

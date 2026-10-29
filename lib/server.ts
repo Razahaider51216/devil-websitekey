@@ -6,7 +6,7 @@ import { expiry, hash, keyFor, safeLink, status, stepState, type Duration } from
 import { validateLinks, type Links } from "./settings";
 import { verifyTurnstile } from "./turnstile";
 import { readJson, cookieValue, requireOrigin } from "./security";
-import { discordRequired, requireDiscord, requireDiscordAdmin, flowOwner, flowOwnerCookie, handleDiscord } from "./discord-auth";
+import { discordRequired, requireLogin, requireDiscordAdmin, flowOwner, flowOwnerCookie, handleDiscord } from "./discord-auth";
 import { plans, validPlan, planFor, type PlanId } from "./plans";
 import { handleScripts } from "./script-storage";
 import { handleRuntime } from "./runtime-storage";
@@ -73,7 +73,7 @@ async function updateGameCatalog(games: SupportedGame[], revision: number) {
   return { games: orderedGames(games), revision: updatedAt };
 }
 export async function flow(req: Request, create = false, selectedPlan?: PlanId) {
-  const user = await requireDiscord(req);
+  const user = await requireLogin(req);
   const db = getDb(), now = Date.now();
   const candidate = cookieValue(req, "devil_flow");
   const cookie = candidate && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(candidate) ? candidate : undefined;

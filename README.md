@@ -108,7 +108,15 @@ Site ID เก็บใน `.openai/hosting.json` ใช้ Site เดิมใ
 อย่า commit `.env`, `.dev.vars`, ฐานข้อมูล local หรือไฟล์ใน outputs
 
 
-## Supported Games
+## Google and Discord sign-in
+
+The public login page offers Google and Discord after Turnstile verification. Create a Google OAuth Web application with the exact redirect URI `https://devil-hub.dev/api/auth/google/callback`. Set `GOOGLE_CLIENT_ID` as a Cloudflare Worker runtime variable and `GOOGLE_CLIENT_SECRET` as a runtime secret, then redeploy. Without these settings, Google is disabled and Discord remains available. The existing `DISCORD_LOGIN_REQUIRED=1` setting requires login through either provider.
+
+Discord accounts retain their existing keys. Google accounts use a separate `google:` identity namespace; accounts are not linked automatically. Admin access still requires Discord and `DISCORD_ADMIN_USER_IDS`. Google login uses one-use state, PKCE, nonce and server-side signature/issuer/audience/expiry validation. Logout revokes the server session. OAuth provider tokens are not saved in browser storage or the database.
+
+Checks: `npm test`, `npx tsc --noEmit`, `npm run build:cf`, and `python tests/login-providers-browser.py`. Browser tests mock provider APIs and cover both desktop and mobile; they do not establish a real Google account login.
+
+## Supported Games directory
 
 `/games` lists all 12 games in the DEVIL HUB router, using official Roblox names, links and thumbnail snapshots in `public/games`. Every card links to Roblox and the existing key portal. The directory keeps the Discord sign-in requirement.
 

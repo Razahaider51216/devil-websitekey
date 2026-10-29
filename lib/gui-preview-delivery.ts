@@ -1,9 +1,9 @@
 // Existing GUI color-only preview; independent of the production runtime manifest.
 export const guiPreview = {
-  release: "original-gray-preview-20261029-1",
-  key: "tests/gui/original-gray-20261029-1.lua",
-  bytes: 206574,
-  sha256: "68eaab0fd6f18afc8c7a222e41ae7f9346085a48b2c6ac2317c9887fcdc8485e",
+  release: "original-gray-preview-20261029-2",
+  key: "tests/gui/original-gray-20261029-2.lua",
+  bytes: 209509,
+  sha256: "e0176f74e76d005aa824b42f1fa7cbcfe6984bf4757e32b396948401ada6d799",
 } as const;
 
 export async function guiPreviewResponse(bucket: Pick<R2Bucket, "get"> | undefined) {

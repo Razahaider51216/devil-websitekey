@@ -1,0 +1,33 @@
+{
+  "release": "fruits-tween-fresh-20261029-1",
+  "key": "tests/fruits-tween/20261029-1.lua",
+  "bytes": 67576,
+  "sha256": "5f0e948fbe7649b43b42e3a1edadfe93820edaf43ec12da36b135664c5a50cd4",
+  "keyRequired": false,
+  "externalUI": false,
+  "raceFeatures": false,
+  "movement": "TweenService",
+  "npcGather": "native aggro, no NPC position writes",
+  "previousFarmCodeReused": false,
+  "mainLoaderChanged": false,
+  "liveRobloxVerified": false,
+  "sources": {
+    "devil-native-gui.lua": "28ba7a951376d5f8e2e0c1d4e30dd2a560a02e47ac7090be40c6055d2eeb521c",
+    "tools\\fruits-tween\\routes.lua": "87b14aabd77158d141c0a5fc7b8704075e364667271e526ad1219fc6470e0897",
+    "tools\\fruits-tween\\planner.lua": "b5a0c4c0c29d40ff194ccaf9e395b2a32b7f2b8568228422ca8b0ad1f86fb384",
+    "tools\\fruits-tween\\motion.lua": "f1cfc4cb1585ad2f129fc1f9a42609cd4fdc8365a98496d3cbe6762b2318f0be",
+    "tools\\fruits-tween\\engine.lua": "e943167c0940924faaad5ce65acd2363c46ccfa638511f81a56c289b67dcc6f9",
+    "tools\\fruits-tween\\adapter.lua": "9122c70144f34e1dfbb329495a896705646471cf35b2d9a7ca86d102aeecbc92",
+    "tools\\fruits-tween\\entry.lua": "b9cb3ad2c587b4123deff8967b18ea29d1e8128772166b1b336b3d5327a54ec6"
+  },
+  "testURL": "https://devil-hub.dev/test/fruits-tween",
+  "workerVersion": "693d5d7f-5b8b-4f39-b633-8d064ff072e5",
+  "liveDeliveryHashVerified": true,
+  "mainRuntimePointersUnchanged": true,
+  "luaCommit": "134947a",
+  "nativeGuiChecks": 54,
+  "engineChecks": 929,
+  "uiBindingChecks": 20,
+  "webTestsPassed": 51,
+  "officialLuauCompilePassed": true
+}

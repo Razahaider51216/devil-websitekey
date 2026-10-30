@@ -1,5 +1,6 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ช่องแชท": "Support inbox",
   "หรือ": "or",
   "ยืนยันก่อนเข้าสู่ระบบ": "Verify you are human before signing in",
   "เข้าสู่ระบบด้วย Google หรือ Discord ก่อนรับคีย์ DEVIL HUB": "Sign in with Google or Discord to get your DEVIL HUB key",

@@ -14,6 +14,7 @@ import { handleFinderTest } from "./finder-test";
 import { resetPremiumHwid, resetSettingId } from "./discord-hwid-reset";
 import { gamesSettingId, initialGames, orderedGames, validateGame, type SupportedGame } from "./supported-games";
 import { gameUsage } from "./game-usage";
+import { handleSupport } from "./support-chat";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -128,7 +129,7 @@ export async function state(id: string) {
   const verified = enabled ? await db.select().from(flowVerifications).where(eq(flowVerifications.flowId, id)).get() : null;
   const completedAt = Math.max(...rows.filter(r => r.returnedAt !== null).map(r => r.returnedAt! + waitMs), 0);
   const passed = !!verified && verified.verifiedAt >= completedAt && verified.verifiedAt > now - 300_000;
-  return { version: "1.0.0", plans, plan, selected: !!plan, serverNow: now, lifetimeHours: issued?.durationKind === "hours" ? issued.durationAmount : conf.lifetimeHours, waitSeconds: conf.waitSeconds, steps: !plan && !issued ? [] : result,
+  return { version: "1.1.0", plans, plan, selected: !!plan, serverNow: now, lifetimeHours: issued?.durationKind === "hours" ? issued.durationAmount : conf.lifetimeHours, waitSeconds: conf.waitSeconds, steps: !plan && !issued ? [] : result,
     configurationUpdatedAt: conf.updatedAt,
     configurationId: conf.settingsId, modeSettingsUpdatedAt: conf.modeSettingsUpdatedAt,
     turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed },
@@ -138,6 +139,7 @@ export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
 }
 export async function handle(req: Request, path: string[]): Promise<Response> {
+  if (path[0] === "support" || path[0] === "admin" && path[1] === "support") return handleSupport(req,path,rate);
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
   if (path.join("/") === "bot/reset-hwid") {
     return resetPremiumHwid(req, (env as unknown as { DB?: D1Database }).DB, vars().DISCORD_BOT_API_SECRET || "");

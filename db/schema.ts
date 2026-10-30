@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 export const flows = sqliteTable("flows", {
   id: text("id").primaryKey(), createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(),
   plan: text("plan"),
@@ -32,3 +32,17 @@ export const siteSettings = sqliteTable("site_settings", {
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+export const supportThreads = sqliteTable("support_threads", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull().unique(), ownerName: text("owner_name").notNull(),
+  updatedAt: integer("updated_at").notNull(), preview: text("preview").notNull().default(""),
+  lastMessageId: integer("last_message_id").notNull().default(0), lastUserId: integer("last_user_id").notNull().default(0),
+  lastAdminId: integer("last_admin_id").notNull().default(0), adminReadId: integer("admin_read_id").notNull().default(0),
+  userReadId: integer("user_read_id").notNull().default(0),
+}, table => [index("support_threads_last_message_idx").on(table.lastMessageId)]);
+export const supportMessages = sqliteTable("support_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }), threadId: text("thread_id").notNull().references(() => supportThreads.id),
+  clientId: text("client_id").notNull(), authorId: text("author_id").notNull(), role: text("role").notNull(),
+  text: text("text").notNull(), imageKey: text("image_key"), imageType: text("image_type"), imageBytes: integer("image_bytes"),
+  createdAt: integer("created_at").notNull(),
+}, table => [index("support_messages_thread_idx").on(table.threadId, table.id),
+  uniqueIndex("support_messages_retry_idx").on(table.threadId, table.authorId, table.clientId)]);

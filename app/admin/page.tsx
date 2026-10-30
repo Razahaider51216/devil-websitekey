@@ -9,7 +9,8 @@ import { KeyCountdown } from "../key-countdown";
 import { remainingKeyTime } from "../../lib/countdown";
 import { DiscordAccess } from "../discord-access";
 import { GameManager } from "./game-manager";
-type AdminSection = "overview" | "keys" | "games" | "missions" | "scripts";
+import { SupportInbox } from "./support-inbox";
+type AdminSection = "overview" | "keys" | "games" | "missions" | "scripts" | "chat";
 type Key = { id: string; key: string; label: string; source: string; createdAt: number; expiresAt: number | null; status: string; kind: string; amount: number };
 export default function Admin() {
   return <DiscordAccess adminOnly><AdminPanel/></DiscordAccess>;
@@ -36,7 +37,7 @@ function AdminPanel() {
   return <><Header admin/><main className="site-main admin-main">{!data ? <section className="admin-login"><div className="eyebrow"><ShieldCheck size={15}/> DISCORD ADMIN ACCESS</div><h1>CONTROL<br/><span>CENTER.</span></h1>{error ? <><div className="notice error" role="alert">{t(error)}</div><button className="quiet-button" disabled={busy} onClick={() => { setBusy(true); setError(""); load().catch(e => setError(e.message)).finally(() => setBusy(false)); }}>{t("ลองอีกครั้ง")}</button></> : <Loader2 className="spin" size={24}/>}<a href="/">{t("กลับหน้ารับคีย์")} <ArrowUpRight size={14}/></a></section> : <>
     <div className="admin-heading"><div><span className="eyebrow"><i className="status-dot"/> ADMINISTRATOR / DEVIL KEY</span><h1>CONTROL <span>CENTER.</span></h1><p>{t("สร้าง จัดการ และติดตามคีย์ของ DEVIL HUB")}</p></div><button className="quiet-button" onClick={logout}><LogOut size={16}/> {t("ออกจากระบบ")}</button></div>
     {error && <div className="notice error" role="alert">{t(error)}</div>}
-    <div className="admin-navigation"><div><span className="eyebrow muted">CONTROL MODULES</span><label htmlFor="admin-section">{t("เลือกหมวดจัดการ")}</label></div><select id="admin-section" value={section} onChange={e => setSection(e.target.value as AdminSection)}>{([["overview", "ภาพรวม"],["keys", "จัดการคีย์"],["games", "จัดการแมพ"],["missions", "ลิงก์ภารกิจ"],["scripts", "ไฟล์สคริปต์"]] as const).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></div>
+    <div className="admin-navigation"><div><span className="eyebrow muted">CONTROL MODULES</span><label htmlFor="admin-section">{t("เลือกหมวดจัดการ")}</label></div><select id="admin-section" value={section} onChange={e => setSection(e.target.value as AdminSection)}>{([["overview", "ภาพรวม"],["keys", "จัดการคีย์"],["games", "จัดการแมพ"],["missions", "ลิงก์ภารกิจ"],["scripts", "ไฟล์สคริปต์"],["chat", "ช่องแชท"]] as const).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></div>
     {section === "overview" && <><div className="stats-grid">{[[t("คีย์ทั้งหมด"), data.stats.total || 0, KeyRound], [t("พร้อมใช้งาน"), data.stats.active || 0, Check], [t("คีย์ถาวร"), data.stats.permanent || 0, InfinityIcon], [t("ถูกยกเลิก"), data.stats.revoked || 0, Ban]].map(([text, value, Icon]: any, i) => <div className="stat-card" key={text}><span>{text}<Icon size={16}/></span><strong>{String(value).padStart(2, "0")}</strong><small>{["TOTAL ISSUED", "ACTIVE ACCESS", "LIFETIME ACCESS", "REVOKED ACCESS"][i]}</small></div>)}</div>
     <div className="admin-overview-links">{(["keys", "games", "missions", "scripts"] as const).map((value, i) => <button className="quiet-button" key={value} onClick={() => setSection(value)}>{t(["จัดการคีย์","จัดการแมพ","ลิงก์ภารกิจ","ไฟล์สคริปต์"][i])}<ArrowRight size={16}/></button>)}</div></>}
     {section === "keys" && <>{created && <div className="created-banner" role="status"><div><span className="eyebrow"><Check size={14}/> KEY CREATED</span><strong>{created.label}</strong><code>{created.key}</code><small>{date(created.expiresAt, language)}</small><KeyCountdown expiresAt={created.expiresAt} status={created.status} now={clock + offset.current}/></div><CopyButton value={created.key}/><button className="dismiss" aria-label={t("ปิดคีย์ที่สร้างแล้ว")} onClick={() => setCreated(null)}>×</button></div>}
@@ -46,5 +47,6 @@ function AdminPanel() {
     {section === "missions" && <section className="admin-missions"><LinkSettings configuration={data.configuration} onSaved={configuration => setData((current: any) => ({ ...current, configuration }))}/></section>}
     {section === "games" && <GameManager/>}
     {section === "scripts" && <ScriptManager/>}
+    {section === "chat" && <SupportInbox/>}
     </>}</main><Footer/></>;
 }

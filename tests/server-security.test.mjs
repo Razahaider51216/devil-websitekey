@@ -71,6 +71,59 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('private support chat isolates users, validates attachments, deduplicates retries and restricts admin replies',async()=>{
+    await reset();const a=new Browser(),b=new Browser(),operator=new Browser(),guest=new Browser();
+    await a.login('223456789012345678');await b.login('323456789012345678');await operator.login();
+    const blobs=new Map(),old=env.SCRIPT_FILES;
+    env.SCRIPT_FILES={put:async(key,bytes)=>{blobs.set(key,new Uint8Array(bytes));},delete:async key=>blobs.delete(key),get:async key=>blobs.has(key)?{body:blobs.get(key)}:null};
+    async function raw(browser,route,method='GET',body,extra={}) {
+      const headers={origin,'cf-connecting-ip':browser.ip,cookie:[...browser.jar].map(([k,v])=>k+'='+v).join('; '),...extra};
+      const request=new Request(origin+'/api/'+route,{method,headers,...(body?{body}:{})});
+      try{return await handle(request,route.split('?')[0].split('/'));}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
+    }
+    function form(text='',image=null,clientId=crypto.randomUUID()) {
+      const body=new FormData();body.set('text',text);body.set('clientId',clientId);body.set('role','admin');
+      if(image)body.set('image',image,'attachment.png');return body;
+    }
+    try {
+      assert.equal((await guest.call('support/thread')).status,401);
+      assert.equal((await a.call('admin/support/threads')).status,403);
+      assert.equal((await a.call('support/thread')).data.thread,null);
+      const posted=await raw(a,'support/thread','POST',form('<script>plain text</script>'));
+      assert.equal(posted.status,200);const sent=(await posted.json()).message;assert.equal(sent.role,'user');
+      const own=(await a.call('support/thread')).data;const id=own.thread.id;
+      assert.equal(own.messages[0].text,'<script>plain text</script>');assert.equal((await b.call('support/thread?thread='+id)).data.messages.length,0);
+      let inbox=(await operator.call('admin/support/threads')).data;assert.equal(inbox.threads[0].id,id);assert.equal(inbox.threads[0].unread,true);
+      assert.equal((await a.call('admin/support/threads/'+id)).status,403);
+      assert.equal((await operator.call('admin/support/threads/'+id+'/read','POST',{through:sent.id})).status,200);
+      assert.equal((await operator.call('admin/support/threads')).data.threads[0].unread,false);
+      const png=new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5N8AAAAASUVORK5CYII=','base64')],{type:'image/png'});
+      const duplicate=crypto.randomUUID();
+      const replies=await Promise.all([1,2].map(()=>raw(operator,'admin/support/threads/'+id,'POST',form('Reply',png,duplicate))));
+      assert.ok(replies.every(r=>r.status===200));const first=(await replies[0].json()).message,second=(await replies[1].json()).message;
+      assert.equal(first.id,second.id);assert.equal(blobs.size,1);assert.equal(first.role,'admin');assert.equal('imageKey'in first,false);
+      assert.equal((await a.call('support/thread')).data.thread.unread,true);
+      assert.equal((await raw(a,first.imageUrl.slice(5))).status,200);
+      assert.equal((await raw(operator,first.imageUrl.slice(5))).headers.get('content-type'),'image/png');
+      assert.equal((await raw(b,first.imageUrl.slice(5))).status,403);assert.equal((await raw(guest,first.imageUrl.slice(5))).status,401);
+      await a.call('support/read','POST',{through:first.id});assert.equal((await a.call('support/thread')).data.thread.unread,false);
+      assert.equal((await raw(a,'support/thread','POST',form(''),{origin:'https://evil.test'})).status,403);
+      assert.equal((await raw(a,'support/thread','POST',form(''))).status,400);
+      assert.equal((await raw(a,'support/thread','POST',form('bad',new Blob(['<svg/>'],{type:'image/svg+xml'})))).status,415);
+      assert.equal((await raw(a,'support/thread','POST',form('bad',new Blob(['<script/>'],{type:'image/png'})))).status,415);
+      assert.equal((await raw(a,'support/thread','POST',form('big',new Blob([new Uint8Array(4*1024*1024+1)],{type:'image/png'})))).status,413);
+      assert.equal((await a.call('support/thread?after='+sent.id)).data.messages[0].id,first.id);
+      assert.equal((await a.call('support/thread?before='+first.id)).data.messages[0].id,sent.id);
+      assert.equal((await a.call('support/thread?after=-1')).status,400);
+      env.GOOGLE_CLIENT_ID='integration.apps.googleusercontent.com';env.GOOGLE_CLIENT_SECRET='google-secret-fixture';
+      const google=new Browser();googleSubject='223456789012345678';await google.loginGoogle();
+      assert.equal((await google.call('support/thread')).data.thread,null,'Google and Discord identities never share a conversation');
+      assert.equal((await raw(google,'support/thread','POST',form('Google support message'))).status,200);
+      assert.equal((await google.call('admin/support/threads')).status,403,'Google identity cannot become a Discord admin');
+      await operator.call('auth/logout','POST',{});assert.equal((await operator.call('admin/support/threads')).status,401);
+      assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0,'chat does not touch keys');
+    } finally {if(old===undefined)delete env.SCRIPT_FILES;else env.SCRIPT_FILES=old;}
+  });
   await t.test('reset device barrier stops the old machine reclaiming a premium key while a new device can activate',async()=>{
     await reset();const operator=new Browser();await operator.login();
     const premium=(await operator.call('admin/keys','POST',{kind:'days',amount:1,label:'reset fixture'})).data;

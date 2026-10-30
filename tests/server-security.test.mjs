@@ -71,6 +71,46 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('Discord role verification binds private tickets to the matching account and requires final CAPTCHA before bot completion',async()=>{
+    await reset();const user=new Browser(),other=new Browser(),bot=new Browser(),guest=new Browser();
+    await user.login('223456789012345678');await other.login('323456789012345678');
+    const previousSecret=env.DISCORD_BOT_API_SECRET;env.DISCORD_BOT_API_SECRET='verification-test-secret-'.repeat(2);
+    const authorization={authorization:'Bearer '+env.DISCORD_BOT_API_SECRET};
+    const input={userId:'223456789012345678',guildId:'423456789012345678',channelId:'523456789012345678',roleId:'623456789012345678',interactionId:'723456789012345678',roleName:'Verified',guildName:'DEVIL HUB'};
+    try{
+      assert.equal((await bot.call('bot/verify/start','POST',input)).status,401);
+      const started=await bot.call('bot/verify/start','POST',input,authorization);assert.equal(started.status,200);
+      const {ticket,id}=started.data;assert.match(ticket,/^[a-f0-9]{64}$/);assert.notEqual(ticket,id);
+      assert.equal((await bot.call('bot/verify/start','POST',input,authorization)).status,409);
+      assert.equal((await guest.call('discord-verify/session','POST',{ticket})).status,401);
+      assert.equal((await other.call('discord-verify/session','POST',{ticket})).status,403);
+      const state=await user.call('discord-verify/session','POST',{ticket});assert.equal(state.data.status,'pending');assert.equal(state.data.roleName,'Verified');
+      assert.equal(state.data.roleId,undefined);assert.equal(state.data.interactionId,undefined);
+      assert.equal((await user.call('bot/verify/finish','POST',{id,ok:true})).status,401);
+      assert.equal((await bot.call('bot/verify/finish','POST',{id,ok:true},authorization)).data.status,'pending');
+      challenge=state.data.challenge;captchaAction='devil-discord-verify';
+      assert.equal((await user.call('discord-verify/confirm','POST',{ticket,token:'valid-token'},{origin:'https://evil.test'})).status,403);
+      assert.equal((await user.call('discord-verify/confirm','POST',{ticket,token:'bad'})).status,400);
+      captchaAction='devil-key-claim';assert.equal((await user.call('discord-verify/confirm','POST',{ticket,token:'valid-token'})).status,400);captchaAction='devil-discord-verify';
+      const approved=await user.call('discord-verify/confirm','POST',{ticket,token:'valid-token',roleId:'999999999999999999'});assert.equal(approved.data.status,'approved');
+      const polled=await bot.call('bot/verify/poll','POST',{ids:[id]},authorization);assert.equal(polled.data.jobs[0].roleId,input.roleId);assert.equal(polled.data.jobs[0].status,'approved');
+      assert.equal((await bot.call('bot/verify/finish','POST',{id,ok:true},authorization)).data.status,'done');
+      assert.equal((await user.call('discord-verify/session','POST',{ticket})).data.status,'done');
+      assert.equal((await bot.call('bot/verify/finish','POST',{id,ok:false},authorization)).data.status,'done');
+      const second=await bot.call('bot/verify/start','POST',{...input,interactionId:'823456789012345678'},authorization);clock+=600001;
+      assert.equal((await user.call('discord-verify/confirm','POST',{ticket:second.data.ticket,token:'valid-token'})).status,410);
+      assert.equal((await user.call('discord-verify/session','POST',{ticket:second.data.ticket})).data.status,'expired');
+      assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0);
+    }finally{env.DISCORD_BOT_API_SECRET=previousSecret;}
+  });
+  await t.test('Discord OAuth returns verification users only to the fixed private page and rejects external return destinations',async()=>{
+    for(const [returnTo,expected] of [['/verify','/verify'],['https://evil.test/','/']]){
+      await reset();const b=new Browser();const s=await b.call('auth/session');challenge=s.data.challenge;captchaAction='devil-key-login';
+      const started=await b.call('auth/discord/start','POST',{token:'valid-token',returnTo});assert.equal(started.status,200);
+      const state=new URL(started.data.url).searchParams.get('state');
+      const result=await b.call('auth/discord/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),expected);
+    }
+  });
   await t.test('private support chat isolates users, validates attachments, deduplicates retries and restricts admin replies',async()=>{
     await reset();const a=new Browser(),b=new Browser(),operator=new Browser(),guest=new Browser();
     await a.login('223456789012345678');await b.login('323456789012345678');await operator.login();

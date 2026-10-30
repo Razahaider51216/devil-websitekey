@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useLanguage } from "./language";
+import { translate } from "../lib/translations";
 
 type Widget = { render: (node: HTMLElement, options: Record<string, unknown>) => string; remove: (id: string) => void; reset: (id: string) => void };
 declare global { interface Window { turnstile?: Widget } }
@@ -16,8 +17,9 @@ function loadWidget() {
   });
   return loading;
 }
-export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, action = "devil-key-claim", stepNumber = 5 }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void>; action?: "devil-key-claim" | "devil-key-login"; stepNumber?: number }) {
-  const { t, language } = useLanguage();
+export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, action = "devil-key-claim", stepNumber = 5, english = false, description }: { siteKey: string; challenge: string; passed: boolean; unlocked: boolean; onVerify: (token: string) => Promise<void>; action?: "devil-key-claim" | "devil-key-login" | "devil-discord-verify"; stepNumber?: number; english?: boolean; description?: string }) {
+  const context = useLanguage(), language = english ? "en" : context.language;
+  const t = (text:string) => translate(language,text);
   const node = useRef<HTMLDivElement>(null), verify = useRef(onVerify);
   verify.current = onVerify;
   const [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
@@ -52,7 +54,7 @@ export function TurnstileStep({ siteKey, challenge, passed, unlocked, onVerify, 
   return <article className={`bot-step ${passed ? "step-done" : ""}`}>
     <div className="eyebrow">{action === "devil-key-login" ? "SECURITY CHECK" : `STEP ${String(stepNumber).padStart(2, "0")}`} / <ShieldCheck size={14}/></div>
     <h3>{t("ยืนยันว่าไม่ใช่บอท")}</h3>
-    <p>{t(action === "devil-key-login" ? "ยืนยันก่อนเข้าสู่ระบบ" : "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
+    <p>{description || t(action === "devil-key-login" ? "ยืนยันก่อนเข้าสู่ระบบ" : "ผ่านการยืนยันแล้วรับคีย์ได้ทันที ไม่ต้องรอเวลา")}</p>
     {passed ? <span className="done-label"><Check size={14}/>{t("เรียบร้อย")}</span> : !unlocked ? <span className="private-note"><LockKeyhole size={14}/>{t("กรุณาทำขั้นตอนก่อนหน้าให้ครบ")}</span> : !siteKey ? <p>{t("ยังไม่ได้ตั้งค่าระบบยืนยันว่าไม่ใช่บอท")}</p> : <div ref={node}/>}
     {failed && <button type="button" className="quiet-button" onClick={() => setRetry(v => v + 1)}>{t("ลองอีกครั้ง")}</button>}
   </article>;

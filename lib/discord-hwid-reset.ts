@@ -6,7 +6,7 @@ const snowflake = /^\d{17,22}$/;
 export const resetSettingId = (keyId: string) => "discord:hwid-reset:" + keyId;
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
-async function authorized(req: Request, secret: string) {
+export async function botAuthorized(req: Request, secret: string) {
   const supplied = req.headers.get("authorization")?.match(/^Bearer ([A-Za-z0-9_-]{32,256})$/)?.[1];
   if (secret.length < 32 || !supplied) return false;
   const bytes = new TextEncoder();
@@ -19,7 +19,7 @@ async function authorized(req: Request, secret: string) {
 // Authentication is bot-to-server only. Discord user IDs come from verified gateway interactions.
 export async function resetPremiumHwid(req: Request, db: D1Database | undefined, secret: string) {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  if (!await authorized(req, secret)) return json({ error: "unauthorized" }, 401);
+  if (!await botAuthorized(req, secret)) return json({ error: "unauthorized" }, 401);
   if (!db) return json({ error: "unavailable" }, 503);
   let input: Record<string, unknown>;
   try { input = await readJson(req); }

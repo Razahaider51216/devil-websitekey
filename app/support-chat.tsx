@@ -117,7 +117,7 @@ export function ChatConversation({ path, admin = false }: { path:string; admin?:
 export function SupportChat() {
   const pathname = usePathname(), {language} = useLanguage();const [open,setOpen] = useState(false);const button = useRef<HTMLButtonElement>(null);
   useEffect(() => { const close = (e:KeyboardEvent) => { if (e.key === "Escape") { setOpen(false);button.current?.focus(); } };window.addEventListener("keydown",close);return () => window.removeEventListener("keydown",close); },[]);
-  if (pathname?.startsWith("/admin")) return null;
+  if (pathname?.startsWith("/admin") || pathname === "/verify") return null;
   return <aside className="support-widget">
     {open && <section id="devil-support-chat" className="support-panel" role="dialog" aria-label="DEVIL HUB Support">
       <header><div><img className="support-brand-logo" src="/devilhubv3.png" alt="DEVIL HUB" width={34} height={28}/><span><strong>DEVIL HUB</strong><small>ADMIN SUPPORT // v1.1.0</small></span></div><button className="support-icon-button" aria-label={language === "th" ? "ปิดแชท" : "Close chat"} onClick={() => { setOpen(false);button.current?.focus(); }}><X size={20}/></button></header>

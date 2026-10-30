@@ -32,6 +32,14 @@ export const siteSettings = sqliteTable("site_settings", {
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+export const discordVerifications = sqliteTable("discord_verifications", {
+  id: text("id").primaryKey(), interactionId: text("interaction_id").notNull().unique(),
+  userId: text("user_id").notNull(), guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  roleId: text("role_id").notNull(), roleName: text("role_name").notNull(), guildName: text("guild_name").notNull(),
+  status: text("status").notNull().default("pending"), error: text("error"),
+  createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(),
+  approvedAt: integer("approved_at"), completedAt: integer("completed_at"),
+}, table => [index("discord_verifications_expiry_idx").on(table.expiresAt)]);
 export const supportThreads = sqliteTable("support_threads", {
   id: text("id").primaryKey(), ownerId: text("owner_id").notNull().unique(), ownerName: text("owner_name").notNull(),
   ownerAvatar: text("owner_avatar"), ownerProvider: text("owner_provider"),

@@ -80,16 +80,18 @@ export async function handleDiscord(req: Request, route: string, rate: (req: Req
     if (!verified) throw new RequestError(400, "Please complete the human verification again");
     const state = crypto.randomUUID(); const now = Date.now();
     await getDb().insert(limits).values({ id: "discord-state:" + await hash(state), hits: 0, expiresAt: now + 600_000 });
-    const signed = await seal({ state }, "discord-state", secret(), 600_000);
+    const signed = await seal({ state, ...(input.returnTo === "/verify" ? { returnTo: "/verify" } : {}) }, "discord-state", secret(), 600_000);
     return response({ url: authorizationUrl(v().DISCORD_CLIENT_ID, redirectUri(req), state) }, [cookie(req, "devil_oauth", signed, 600), cookie(req, "devil_login", "", 0)]);
   }
   if (route === "auth/discord/callback" && req.method === "GET") {
     await rate(req, "discord-callback", 20);
     const clear = cookie(req, "devil_oauth", "", 0);
+    let destination = "/";
     let failure = "LOGIN_CONFIG";
     try {
       if (!discordRequired() || !configured()) throw 0;
       const url = new URL(req.url), data = await read(req, "devil_oauth", "discord-state");
+      if (data?.returnTo === "/verify") destination = "/verify";
       const state = url.searchParams.get("state"), code = url.searchParams.get("code");
       if (url.searchParams.has("error")) { failure = "LOGIN_CANCELLED"; throw 0; }
       if (!data) { failure = "LOGIN_COOKIE_MISSING"; throw 0; }
@@ -102,12 +104,12 @@ export async function handleDiscord(req: Request, route: string, rate: (req: Req
       const session = crypto.randomUUID();
       await getDb().insert(limits).values({ id: "discord-session:" + await hash(session), hits: 0, expiresAt: Date.now() + 28_800_000 });
       const token = await seal({ ...user, session }, "discord-session", secret(), 28_800_000);
-      return response(null, [clear, cookie(req, "devil_auth", token, 28800)], 302, { Location: "/" });
+      return response(null, [clear, cookie(req, "devil_auth", token, 28800)], 302, { Location: destination });
     } catch (error) {
       const category = error instanceof DiscordLoginError ? error.code : error instanceof Error ? serviceErrorCode(error) : failure;
       const reason = loginFailureCode(category === "SERVICE_UNAVAILABLE" ? failure : category);
       console.warn("DEVIL KEY Discord login failed", reason);
-      return response(null, [clear], 302, { Location: "/?login=failed&reason=" + reason });
+      return response(null, [clear], 302, { Location: destination + "?login=failed&reason=" + reason });
     }
   }
   if (route === "auth/logout" && req.method === "POST") {

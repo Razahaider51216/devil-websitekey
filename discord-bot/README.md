@@ -1,5 +1,44 @@
 # DEVIL HUB HWID bot
 
+## Discord verification
+
+Use `/set-verify channel:#verify role:@Verified`. The administrator must have
+Manage Server and Manage Roles. The bot needs Manage Roles, View Channel, Send
+Messages, Embed Links, Read Message History and permission to use the configured
+custom emojis. Move its highest role above the role being awarded. Managed roles,
+the everyone role and roles with Administrator permission cannot be selected.
+
+Optional slash-command settings: `title`, `description`, `button-label`,
+`button-color` (Blue / Gray / Green / Red), `emoji` (Unicode, `<:name:id>` or
+`<a:name:id>`), `color` (hex), `image-url`, `image` (upload), `info-label` and
+`info-text`. Repeating the command updates the panel in the chosen channel.
+Panels use Components V2 with a media image and the bot's avatar thumbnail.
+
+Pressing Verify creates an ephemeral Components V2 response with the text
+"Verify your identity to receive your role." and a Continue Verification link.
+The private link lasts 10 minutes and opens `https://devil-hub.dev/verify`.
+It is not listed in the website's main navigation. The website requires the same
+Discord account that pressed the button and a separate Turnstile security check.
+Google cannot be used to claim Discord roles. OAuth returns directly to /verify.
+
+After Confirm Verification, the running bot polls the authenticated API, checks
+the role hierarchy again, assigns the selected role, and edits only that user's
+ephemeral reply. Success uses `<:ojic_017:1546638487845867550>`, failure uses
+`<:ojic_018:1546638491478265946>`. The website shows success only after the bot
+reports the role was assigned, rather than after CAPTCHA alone.
+
+The existing `DISCORD_BOT_API_SECRET` must match the Worker secret. No bot token
+is added to the browser or Worker. Apply migration `0009_discord_verification.sql`
+and deploy the website before starting this version. Install dependencies with
+`npm ci`, then restart the bot with `npm start`. Commands are registered on ready;
+`npm run register` also registers both commands without deleting unrelated ones.
+
+Keep `data/verify.json` private: it contains saved panel settings and short-lived
+Discord interaction webhook credentials for restart recovery. The whole data/
+directory, .env and node_modules are excluded from Git. Run one bot process for
+this data directory. Expired sessions cannot grant roles. Existing HWID reset
+panels and the Get Key website remain independent.
+
 New, independent Discord bot. Uses the DEVIL KEY website database rather than
 creating another key store. Gateway client requires Node 24+ and a running host.
 It is not a Cloudflare Worker process; only the authenticated reset API runs there.

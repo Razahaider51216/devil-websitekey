@@ -4,10 +4,10 @@ export class RequestError extends Error {
   status: number;
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
-export async function readJson(req: Request) {
+export async function readJson(req: Request, maximum = MAX_BODY) {
   if (!/^application\/json(?:\s*;|$)/i.test(req.headers.get("content-type") || "")) throw new RequestError(415, "JSON request required");
   const size = Number(req.headers.get("content-length"));
-  if (size > MAX_BODY) throw new RequestError(413, "Request too large");
+  if (size > maximum) throw new RequestError(413, "Request too large");
   const reader = req.body?.getReader();
   if (!reader) throw new RequestError(400, "JSON object required");
   const chunks: Uint8Array[] = []; let total = 0;
@@ -19,7 +19,7 @@ export async function readJson(req: Request) {
     while (true) {
       const { done, value } = await Promise.race([reader.read(), deadline]); if (done) break;
       total += value.byteLength;
-      if (total > MAX_BODY) { await reader.cancel(); throw new RequestError(413, "Request too large"); }
+      if (total > maximum) { await reader.cancel(); throw new RequestError(413, "Request too large"); }
       chunks.push(value);
     }
   } finally { clearTimeout(timer!); reader.releaseLock(); }

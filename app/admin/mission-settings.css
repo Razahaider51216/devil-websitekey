@@ -1,0 +1,10 @@
+.mission-settings .mission-editor-list{display:flex;flex-direction:column;gap:18px;margin-top:22px}
+.mission-settings .mission-editor{min-width:0;margin:0;padding:14px 18px 18px;border:1px solid #2e4556;border-radius:7px;background:#0c131b}
+.mission-editor legend{padding:0 8px;color:#7dd3fc;font:11px var(--mono);letter-spacing:.06em}
+.mission-settings .mission-editor-actions{display:flex;justify-content:flex-end;gap:7px;margin:0 0 8px}
+.mission-editor-actions .quiet-button{padding:7px}.mission-editor-actions button:disabled{opacity:.3}
+.mission-settings .mission-editor-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr);gap:0 18px}
+.mission-editor-grid label{min-width:0}.mission-editor-grid .field-label{margin-top:12px}.mission-editor-grid input,.mission-editor-grid select{width:100%;min-width:0}
+.mission-editor-wide{grid-column:1/-1}.mission-settings .mission-add{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;width:100%;border-style:dashed;border-color:#376680;color:#7dd3fc}
+.mission-settings .mission-verification{display:flex;align-items:center;gap:9px;padding:14px;border:1px solid #254052;border-radius:5px;color:#b4ddf3;background:#10202c;line-height:1.8}
+@media(max-width:680px){.mission-settings .mission-editor{padding:10px 12px 14px}.mission-settings .mission-editor-grid{grid-template-columns:minmax(0,1fr)}.mission-editor-wide{grid-column:auto}}

@@ -346,6 +346,53 @@ test('server security integration',async t=>{
     clock+=900001;assert.equal((await b.call('flow/claim','POST',{})).status,409);
     assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0);
   });
+  await t.test('custom steps beyond four enforce individual timers, ordering, revisions and final verification',async()=>{
+    await reset();const operator=new Browser(),user=new Browser();await operator.login();await user.login('223456789012345678');
+    const links={discordUrl:'https://discord.gg/test',channelUrl:'',videoUrl:'',commentUrl:'',likeUrl:''};
+    const missions=Array.from({length:6},(_,i)=>({title:'Custom '+(i+1),subtitle:'',service:'LINK',url:'https://example.test/step/'+i,waitSeconds:i%2?7:0}));
+    assert.equal((await user.call('admin/settings','POST',{plan:'6h',links:{...links,missions}})).status,403);
+    let saved=await operator.call('admin/settings','POST',{plan:'6h',links:{...links,missions}});assert.equal(saved.status,200);
+    clock+=1;
+    let selected=(await user.call('flow/select','POST',{plan:'6h'})).data;
+    assert.equal(selected.steps.length,6);assert.equal(selected.plans.find(p=>p.id==='6h').totalSteps,7);
+    assert.equal(selected.plans.find(p=>p.id==='12h').totalSteps,3);
+    assert.equal((await user.call('flow/open','POST',{step:6})).status,409);
+    for(let i=0;i<missions.length;i++){
+      assert.equal((await user.call('flow/open','POST',{step:i+1,waitSeconds:0})).status,200);
+      const returned=await user.call('flow/return','POST',{step:i+1});assert.equal(returned.status,200);
+      assert.equal(returned.data.steps[i].deadline-clock,missions[i].waitSeconds*1000);
+      if(missions[i].waitSeconds){assert.equal((await user.call('flow/claim','POST',{})).status,409);clock+=missions[i].waitSeconds*1000;}
+    }
+    selected=(await user.call('flow')).data;challenge=selected.turnstile.challenge;captchaAction='devil-key-claim';
+    assert.equal((await user.call('flow/verify','POST',{token:'valid-token'})).status,200);
+    clock+=1;missions[5].waitSeconds=13;
+    assert.equal((await operator.call('admin/settings','POST',{plan:'6h',links:{...links,missions}})).status,200);
+    assert.equal((await user.call('flow/claim','POST',{})).status,409);
+    selected=(await user.call('flow')).data;assert.equal(selected.steps[5].status,'ready');assert.equal(selected.turnstile.passed,false);
+    clock+=60000; // Move to a fresh mutation-rate bucket before retrying the changed step.
+    assert.equal((await user.call('flow/return','POST',{step:6})).status,409);
+    await user.call('flow/open','POST',{step:6});await user.call('flow/return','POST',{step:6});clock+=12999;
+    assert.equal((await user.call('flow/verify','POST',{token:'valid-token'})).status,409);clock++;
+    assert.equal((await user.call('flow/verify','POST',{token:'valid-token'})).status,200);
+    const issued=await user.call('flow/claim','POST',{});assert.equal(issued.status,200);assert.equal(issued.data.expiresAt-issued.data.createdAt,6*3600000);
+    for(const patch of [{waitSeconds:-1},{waitSeconds:1.5},{url:'javascript:alert(1)'},{title:''}]){
+      assert.equal((await operator.call('admin/settings','POST',{plan:'12h',links:{...links,missions:[{...missions[0],...patch}]}})).status,400);
+    }
+    assert.equal((await operator.call('admin/settings','POST',{plan:'12h',links:{...links,missions:[]}})).status,400);
+  });
+  await t.test('large mission lists save beyond 16 KiB and issue atomically without per-step SQL parameters',async()=>{
+    await reset();const b=new Browser();await b.login();
+    const missions=Array.from({length:180},(_,i)=>({title:'Step '+i,subtitle:'Details',service:'LINK',url:'https://example.test/step/'+i,waitSeconds:i%3}));
+    const links={discordUrl:'',channelUrl:'',videoUrl:'',commentUrl:'',likeUrl:'',missions};
+    assert.ok(JSON.stringify({plan:'24h',links}).length>16384);
+    assert.equal((await b.call('admin/settings','POST',{plan:'24h',links})).status,200);clock++;
+    const selected=(await b.call('flow/select','POST',{plan:'24h'})).data;assert.equal(selected.steps.length,180);
+    const flowId=b.jar.get('devil_flow');
+    for(const step of selected.steps)await client.execute({sql:'insert into steps (id,flow_id,number,opened_at,returned_at,link_hash) values (?,?,?,?,?,?)',args:[flowId+':'+step.number,flowId,step.number,clock-10000,clock-10000,await hash(step.identity)]});
+    challenge=selected.turnstile.challenge;captchaAction='devil-key-claim';assert.equal((await b.call('flow/verify','POST',{token:'valid-token'})).status,200);
+    const attempts=await Promise.all([1,2,3].map(()=>b.call('flow/claim','POST',{})));
+    assert.ok(attempts.every(r=>r.status===200),JSON.stringify(attempts));assert.equal(new Set(attempts.map(r=>r.data.key)).size,1);
+  });
   await t.test('all three plans enforce exact hours, counts, timers and mandatory final CAPTCHA',async()=>{
     for(const [plan,hours,links,wait] of [['6h',6,1,30000],['12h',12,2,49000],['24h',24,3,90000]]){
       await reset();const b=new Browser();await b.login();

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getDb } from "../db";
 import { flows, steps, keys, limits, siteSettings, keyDevices, flowVerifications } from "../db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { expiry, hash, keyFor, safeLink, status, stepState, type Duration } from "./domain";
 import { validateLinks, type Links } from "./settings";
 import { verifyTurnstile } from "./turnstile";
@@ -22,27 +22,30 @@ export function fail(code: number, message: string): never { throw new HttpError
 export function json(value: unknown, code = 200, extra: Record<string,string> = {}) {
   return Response.json(value, { status: code, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra } });
 }
-export async function config(plan: PlanId | null = null) {
+async function planSettings() {
+  return getDb().select().from(siteSettings).where(inArray(siteSettings.id, ["links", ...plans.map(plan => "links:" + plan.id)]));
+}
+export async function config(plan: PlanId | null = null, snapshot?: (typeof siteSettings.$inferSelect)[]) {
   const v = vars();
   const selected = plan ? planFor(plan) : null;
   const settingsId = plan ? "links:" + plan : "links";
-  const override = plan ? await getDb().select().from(siteSettings).where(eq(siteSettings.id, settingsId)).get() : undefined;
-  const stored = override || await getDb().select().from(siteSettings).where(eq(siteSettings.id, "links")).get();
+  const override = plan ? (snapshot ? snapshot.find(row => row.id === settingsId) : await getDb().select().from(siteSettings).where(eq(siteSettings.id, settingsId)).get()) : undefined;
+  const stored = override || (snapshot ? snapshot.find(row => row.id === "links") : await getDb().select().from(siteSettings).where(eq(siteSettings.id, "links")).get());
   const links: Links = stored ? validateLinks(JSON.parse(stored.value)) : {
     discordUrl: safeLink(v.DISCORD_URL || "https://discord.gg/fDwPCmpkkh"),
     channelUrl: safeLink(v.YOUTUBE_CHANNEL_URL || ""), videoUrl: safeLink(v.YOUTUBE_VIDEO_URL || ""),
     commentUrl: safeLink(v.COMMENT_VIDEO_URL || ""), likeUrl: safeLink(v.LIKE_VIDEO_URL || ""),
   };
-  return { plan, settingsId: override ? settingsId : "links", modeSettingsUpdatedAt: override?.updatedAt ?? null, links, updatedAt: stored?.updatedAt ?? null, waitSeconds: selected?.waitSeconds ?? 30, lifetimeHours: selected?.hours ?? Math.max(1, Math.min(8760, Number(v.PUBLIC_KEY_HOURS) || 24)), steps: [
+  return { plan, settingsId: override ? settingsId : "links", modeSettingsUpdatedAt: override?.updatedAt ?? null, links, updatedAt: stored?.updatedAt ?? null, waitSeconds: links.missions?.[0]?.waitSeconds ?? selected?.waitSeconds ?? 30, lifetimeHours: selected?.hours ?? Math.max(1, Math.min(8760, Number(v.PUBLIC_KEY_HOURS) || 24)), steps: (links.missions || [
     plan === "6h" && links.sixHourService === "youtube"
       ? { number: 1, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: links.channelUrl }
       : { number: 1, title: "เข้าร่วม Discord", subtitle: "เข้ามาเป็นส่วนหนึ่งของ DEVIL community", service: "DISCORD", url: links.discordUrl },
     { number: 2, title: "ติดตามช่อง DEVIL HUB", subtitle: "อัปเดตสคริปต์และฟีเจอร์ใหม่ก่อนใคร", service: "YOUTUBE", url: links.channelUrl },
     { number: 3, title: "คอมเมนต์วิดีโอล่าสุด", subtitle: "แวะไปทักทายกันใต้คลิปวิดีโอ", service: "COMMENT", url: links.commentUrl || links.videoUrl },
     { number: 4, title: "กดไลค์วิดีโอ", subtitle: "ส่งกำลังใจให้ DEVIL HUB ด้วยหนึ่งไลค์", service: "LIKE", url: links.likeUrl || links.videoUrl },
-  ].slice(0, selected?.linkSteps ?? 4) };
+  ].slice(0, selected?.linkSteps ?? 4).map(step => ({ ...step, waitSeconds: selected?.waitSeconds ?? 30 }))).map((step, i) => ({ ...step, number: i + 1, identity: links.missions ? JSON.stringify([step.url, step.waitSeconds, step.title, step.service, i]) : step.url })) };
 }
-async function adminConfig() { return { ...await config(), modes: await Promise.all(plans.map(plan => config(plan.id))) }; }
+async function adminConfig() { const snapshot = await planSettings();return { ...await config(null, snapshot), modes: await Promise.all(plans.map(plan => config(plan.id, snapshot))) }; }
 export function sameOrigin(req: Request) {
   requireOrigin(req);
 }
@@ -114,22 +117,33 @@ export async function state(id: string) {
   const db = getDb();
   const session = await db.select().from(flows).where(eq(flows.id, id)).get();
   const plan = validPlan(session?.plan) ? session.plan : null;
-  const conf = await config(plan), now = Date.now(), waitMs = conf.waitSeconds * 1000;
+  const snapshot = await planSettings();
+  const conf = await config(plan, snapshot), now = Date.now();
   const rows = await db.select().from(steps).where(eq(steps.flowId, id));
   const issued = await db.select().from(keys).where(eq(keys.flowId, id)).get();
   const result = [];
-  for (const s of conf.steps) {
-    const row = rows.find(r => r.number === s.number);
-    const valid = !!row && row.linkHash === await hash(s.url);
+  let completedAt = 0;
+  const byNumber = new Map(rows.map(row => [row.number, row]));
+  const proofs = await Promise.all(conf.steps.map(step => hash(step.identity)));
+  for (const [index, s] of conf.steps.entries()) {
+    const waitMs = s.waitSeconds * 1000;
+    const row = byNumber.get(s.number);
+    const valid = !!row && row.linkHash === proofs[index];
     const step = valid ? row : { openedAt: null, returnedAt: null };
+    if (step.returnedAt !== null) completedAt = Math.max(completedAt, step.returnedAt + waitMs);
     result.push({ ...s, configured: !!s.url, status: stepState(step, now, waitMs), deadline: step.returnedAt === null ? null : step.returnedAt + waitMs });
   }
   const siteKey = vars().TURNSTILE_SITE_KEY || "", secret = vars().TURNSTILE_SECRET_KEY || "";
   const enabled = !!plan || vars().REQUIRE_TURNSTILE === "1" || discordRequired() || !!(siteKey || secret);
   const verified = enabled ? await db.select().from(flowVerifications).where(eq(flowVerifications.flowId, id)).get() : null;
-  const completedAt = Math.max(...rows.filter(r => r.returnedAt !== null).map(r => r.returnedAt! + waitMs), 0);
-  const passed = !!verified && verified.verifiedAt >= completedAt && verified.verifiedAt > now - 300_000;
-  return { version: "1.1.0", plans, plan, selected: !!plan, serverNow: now, lifetimeHours: issued?.durationKind === "hours" ? issued.durationAmount : conf.lifetimeHours, waitSeconds: conf.waitSeconds, steps: !plan && !issued ? [] : result,
+  const passed = !!verified && verified.verifiedAt >= Math.max(completedAt, conf.updatedAt ?? 0) && verified.verifiedAt > now - 300_000;
+  const availablePlans = await Promise.all(plans.map(async preset => {
+    const settings = preset.id === plan ? conf : await config(preset.id, snapshot);
+    const waits = settings.steps.map(step => step.waitSeconds);
+    return { ...preset, linkSteps: settings.steps.length, totalSteps: settings.steps.length + 1,
+      waitSeconds: waits[0] ?? 0, minWaitSeconds: waits.reduce((a,b) => Math.min(a,b), waits[0] ?? 0), maxWaitSeconds: waits.reduce((a,b) => Math.max(a,b), 0) };
+  }));
+  return { version: "1.1.0", plans: availablePlans, plan, selected: !!plan, serverNow: now, lifetimeHours: issued?.durationKind === "hours" ? issued.durationAmount : conf.lifetimeHours, waitSeconds: conf.waitSeconds, steps: !plan && !issued ? [] : result,
     configurationUpdatedAt: conf.updatedAt,
     configurationId: conf.settingsId, modeSettingsUpdatedAt: conf.modeSettingsUpdatedAt,
     turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed },
@@ -186,7 +200,7 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
   if ((route === "flow/open" || route === "flow/return") && req.method === "POST") {
     sameOrigin(req); const { step } = await body(req), session = await flow(req);
     await rate(req, "steps", 600); await rate(req, "step-flow:" + session.row.id, 30);
-    if (!Number.isInteger(step) || step < 1 || step > 4) fail(400, "ไม่พบขั้นตอน");
+    if (!Number.isSafeInteger(step) || step < 1) fail(400, "ไม่พบขั้นตอน");
     const current = await state(session.row.id);
     if (!current.selected || step > current.steps.length) fail(400, "Select a key plan and a valid step first");
     if (current.key) fail(409, "เซสชันนี้ได้รับคีย์แล้ว");
@@ -195,13 +209,13 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     const id = `${session.row.id}:${step}`;
     const mutationTime = Date.now();
     if (route.endsWith("open")) {
-      await db.insert(steps).values({ id, flowId: session.row.id, number: step, openedAt: mutationTime, returnedAt: null, linkHash: await hash(selected.url) }).onConflictDoNothing();
+      await db.insert(steps).values({ id, flowId: session.row.id, number: step, openedAt: mutationTime, returnedAt: null, linkHash: await hash(selected.identity) }).onConflictDoNothing();
       const existing = await db.select().from(steps).where(eq(steps.id, id)).get();
-      if (existing!.linkHash !== await hash(selected.url)) await db.update(steps).set({ openedAt: mutationTime, returnedAt: null, linkHash: await hash(selected.url) }).where(eq(steps.id, id));
+      if (existing!.linkHash !== await hash(selected.identity)) await db.update(steps).set({ openedAt: mutationTime, returnedAt: null, linkHash: await hash(selected.identity) }).where(eq(steps.id, id));
     } else {
       const existing = await db.select().from(steps).where(eq(steps.id, id)).get();
-      if (!existing?.openedAt || existing.linkHash !== await hash(selected.url)) fail(409, "เปิดลิงก์ขั้นตอนนี้ก่อน");
-      await db.update(steps).set({ returnedAt: sql`case when ${steps.returnedAt} < ${steps.openedAt} then ${mutationTime} else coalesce(${steps.returnedAt}, ${mutationTime}) end` }).where(and(eq(steps.id, id), eq(steps.linkHash, await hash(selected.url))));
+      if (!existing?.openedAt || existing.linkHash !== await hash(selected.identity)) fail(409, "เปิดลิงก์ขั้นตอนนี้ก่อน");
+      await db.update(steps).set({ returnedAt: sql`case when ${steps.returnedAt} < ${steps.openedAt} then ${mutationTime} else coalesce(${steps.returnedAt}, ${mutationTime}) end` }).where(and(eq(steps.id, id), eq(steps.linkHash, await hash(selected.identity))));
     }
     return json({ ...await state(session.row.id), openedUrl: selected.url });
   }
@@ -215,9 +229,20 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     }
     const id = crypto.randomUUID(), key = await keyFor(id, vars().KEY_SECRET || "");
     const issuedAt = Date.now();
-    const waitMs = current.waitSeconds * 1000;
-    const checks = await Promise.all(current.steps.map(async s => sql`exists (select 1 from steps where flow_id=${session.row.id} and number=${s.number} and id=${session.row.id + ":" + s.number} and link_hash=${await hash(s.url)} and opened_at is not null and returned_at >= opened_at and returned_at <= ${issuedAt - waitMs})`));
-    const human = current.turnstile.enabled ? sql`exists (select 1 from flow_verifications where flow_id=${session.row.id} and verified_at > ${issuedAt - 300_000} and verified_at >= coalesce((select max(returned_at) + ${waitMs} from steps where flow_id=${session.row.id}),0))` : sql`1=1`;
+    // A single JSON parameter avoids D1's bound-parameter and expression-depth limits for many steps.
+    const requirements = JSON.stringify(await Promise.all(current.steps.map(async s => ({ number: s.number, hash: await hash(s.identity), wait: s.waitSeconds * 1000 }))));
+    const eligibleSteps = sql`not exists (select 1 from json_each(${requirements}) as required
+      where not exists (select 1 from steps as completed where completed.flow_id=${session.row.id}
+        and completed.number=json_extract(required.value,'$.number')
+        and completed.id=${session.row.id + ":"} || json_extract(required.value,'$.number')
+        and completed.link_hash=json_extract(required.value,'$.hash')
+        and completed.opened_at is not null and completed.returned_at >= completed.opened_at
+        and completed.returned_at <= ${issuedAt} - json_extract(required.value,'$.wait'))) `;
+    const human = current.turnstile.enabled ? sql`exists (select 1 from flow_verifications where flow_id=${session.row.id}
+      and verified_at > ${issuedAt - 300_000} and verified_at >= ${current.configurationUpdatedAt ?? 0}
+      and not exists (select 1 from json_each(${requirements}) as required join steps as completed
+        on completed.flow_id=${session.row.id} and completed.number=json_extract(required.value,'$.number')
+        where completed.returned_at + json_extract(required.value,'$.wait') > verified_at))` : sql`1=1`;
     // Eligibility and unique issuance are checked by the same database statement.
     await db.run(sql`insert into access_keys (id,flow_id,key_hash,label,source,created_at,expires_at,revoked_at,duration_kind,duration_amount,owner_id)
       select ${id},${session.row.id},${await hash(key)},${current.lifetimeHours + 'H access'},'steps',${issuedAt},${issuedAt + current.lifetimeHours * 3_600_000},null,'hours',${current.lifetimeHours},${session.row.ownerId}
@@ -225,7 +250,7 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
       and (${session.row.ownerId} is null or not exists (select 1 from access_keys where owner_id=${session.row.ownerId} and source='steps' and revoked_at is null and (expires_at is null or expires_at > ${issuedAt})))
       and coalesce((select updated_at from site_settings where id=${current.configurationId}),0)=${current.configurationUpdatedAt ?? 0}
       and coalesce((select updated_at from site_settings where id=${'links:' + current.plan}),0)=${current.modeSettingsUpdatedAt ?? 0}
-      and ${checks.length ? sql.join(checks, sql` and `) : sql`1=1`} and ${human} on conflict(flow_id) do nothing`);
+      and ${eligibleSteps} and ${human} on conflict(flow_id) do nothing`);
     const row = await db.select().from(keys).where(eq(keys.flowId, session.row.id)).get();
     if (!row) fail(409, "Steps or verification changed. Please reload and try again.");
     return json(await presentKey(row!));
@@ -296,13 +321,13 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     }
     if (route === "admin/settings" && req.method === "GET") return json(await adminConfig());
     if (route === "admin/settings" && req.method === "POST") {
-      const input = await body(req);
+      const input = await readJson(req, 1_048_576);
       if (!validPlan(input.plan)) fail(400, "Invalid key plan");
       let links: Links;
       try { links = validateLinks(input.links); } catch (error) { fail(400, (error as Error).message); }
       const updatedAt = Date.now();
       await db.insert(siteSettings).values({ id: "links:" + input.plan, value: JSON.stringify(links), updatedAt })
-        .onConflictDoUpdate({ target: siteSettings.id, set: { value: JSON.stringify(links), updatedAt } });
+        .onConflictDoUpdate({ target: siteSettings.id, set: { value: JSON.stringify(links), updatedAt: sql`max(${siteSettings.updatedAt} + 1, ${updatedAt})` } });
       return json(await adminConfig());
     }
     if (route === "admin/keys" && req.method === "GET") {

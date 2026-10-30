@@ -6,5 +6,6 @@
 .mission-settings .mission-editor-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr);gap:0 18px}
 .mission-editor-grid label{min-width:0}.mission-editor-grid .field-label{margin-top:12px}.mission-editor-grid input,.mission-editor-grid select{width:100%;min-width:0}
 .mission-editor-wide{grid-column:1/-1}.mission-settings .mission-add{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;width:100%;border-style:dashed;border-color:#376680;color:#7dd3fc}
+.mission-title-fields label{display:block}.mission-translation-status{display:flex;align-items:center;gap:8px;margin-top:8px}.mission-translation-status small{font-size:10px;color:#9ab7ce;line-height:1.7;flex:1}.mission-translation-status .quiet-button{padding:6px;flex-shrink:0}
 .mission-settings .mission-verification{display:flex;align-items:center;gap:9px;padding:14px;border:1px solid #254052;border-radius:5px;color:#b4ddf3;background:#10202c;line-height:1.8}
 @media(max-width:680px){.mission-settings .mission-editor{padding:10px 12px 14px}.mission-settings .mission-editor-grid{grid-template-columns:minmax(0,1fr)}.mission-editor-wide{grid-column:auto}}

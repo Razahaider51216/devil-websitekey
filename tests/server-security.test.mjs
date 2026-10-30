@@ -71,6 +71,29 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('admin mission title translation supports both directions, caches results and preserves explicit languages on save',async()=>{
+    await reset();const admin=new Browser(),member=new Browser(),guest=new Browser();await admin.login();await member.login('223456789012345678');
+    const old=env.AI;let calls=0;
+    env.AI={run:async(model,input)=>{calls++;assert.equal(model,'@cf/meta/m2m100-1.2b');return {translated_text:input.source_lang==='th'?'Visit the new community portal':'เยี่ยมชมพอร์ทัลชุมชนใหม่'};}};
+    try{
+      assert.equal((await guest.call('admin/translate-title','POST',{title:'Visit the new community portal'})).status,401);
+      assert.equal((await member.call('admin/translate-title','POST',{title:'Visit the new community portal'})).status,403);
+      assert.equal((await admin.call('admin/translate-title','POST',{title:'Visit the new community portal'},{origin:'https://evil.test'})).status,403);
+      const english=await admin.call('admin/translate-title','POST',{title:'Visit the new community portal'});assert.equal(english.status,200);assert.equal(english.data.titleEn,'Visit the new community portal');assert.equal(english.data.titleTh,'เยี่ยมชมพอร์ทัลชุมชนใหม่');
+      assert.equal((await admin.call('admin/translate-title','POST',{title:'Visit the new community portal'})).status,200);assert.equal(calls,1);
+      const thai=await admin.call('admin/translate-title','POST',{title:'เยี่ยมชมพอร์ทัลชุมชนใหม่'});assert.equal(thai.status,200);assert.equal(thai.data.titleEn,'Visit the new community portal');assert.equal(calls,2);
+      const links={discordUrl:'',channelUrl:'',videoUrl:'',commentUrl:'',likeUrl:'',missions:[{title:'Visit the new community portal',...english.data,subtitle:'',service:'LINK',url:'https://example.test/community',waitSeconds:0}]};
+      assert.equal((await admin.call('admin/settings','POST',{plan:'6h',links})).status,200);
+      let selected=(await member.call('flow/select','POST',{plan:'6h'})).data;assert.equal(selected.steps[0].titleTh,english.data.titleTh);assert.equal(selected.steps[0].titleEn,english.data.titleEn);
+      const identity=selected.steps[0].identity;await member.call('flow/open','POST',{step:1});await member.call('flow/return','POST',{step:1});
+      links.missions[0].titleTh='คำแปลที่แก้โดยแอดมิน';assert.equal((await admin.call('admin/settings','POST',{plan:'6h',links})).status,200);
+      selected=(await member.call('flow')).data;assert.equal(selected.steps[0].identity,identity);assert.equal(selected.steps[0].status,'done');
+      assert.equal((await admin.call('admin/translate-title','POST',{title:'x'.repeat(161)})).status,400);
+      env.AI={run:async()=>{throw new Error('Unavailable');}};
+      const failed=await admin.call('admin/translate-title','POST',{title:'An uncached mission title'});assert.equal(failed.status,503);
+      assert.equal((await admin.call('admin/settings')).data.modes.find(m=>m.plan==='6h').steps[0].titleTh,'คำแปลที่แก้โดยแอดมิน');
+    }finally{env.AI=old;}
+  });
   await t.test('Discord role verification binds private tickets to the matching account and requires final CAPTCHA before bot completion',async()=>{
     await reset();const user=new Browser(),other=new Browser(),bot=new Browser(),guest=new Browser();
     await user.login('223456789012345678');await other.login('323456789012345678');

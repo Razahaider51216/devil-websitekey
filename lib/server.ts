@@ -16,6 +16,7 @@ import { gamesSettingId, initialGames, orderedGames, validateGame, type Supporte
 import { gameUsage } from "./game-usage";
 import { handleSupport } from "./support-chat";
 import { handleDiscordVerification } from "./discord-verification";
+import { translateMissionTitle } from "./translate-mission-title";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -320,6 +321,10 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
       try { game = validateGame(input.game, previous?.id || crypto.randomUUID(), previous); }
       catch (error) { fail(400, (error as Error).message); }
       return json(await updateGameCatalog(previous ? catalog.games.map(item => item.id === previous.id ? game : item) : [...catalog.games, game], catalog.revision));
+    }
+    if (route === "admin/translate-title" && req.method === "POST") {
+      await rate(req,"mission-title-translation",20);
+      const input=await readJson(req);return json(await translateMissionTitle(input.title));
     }
     if (route === "admin/settings" && req.method === "GET") return json(await adminConfig());
     if (route === "admin/settings" && req.method === "POST") {

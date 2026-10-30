@@ -2,6 +2,22 @@ import { ActionRowBuilder,ButtonBuilder,ButtonStyle,ContainerBuilder,MediaGaller
   MessageFlags,SectionBuilder,SeparatorBuilder,TextDisplayBuilder,ThumbnailBuilder } from 'discord.js';
 
 export const verifyIds={verify:'devilhub:verify:start',info:'devilhub:verify:info'};
+export const legacyVerificationInfo='Press Verify, open your private website link, sign in with the same Discord account and complete the human verification. Your role will be assigned automatically.';
+export const defaultVerificationInfo=[
+  '**ภาษาไทย — วิธีรับยศ**',
+  '> 1. กดปุ่ม Verify แล้วกด Continue Verification ในข้อความส่วนตัวของบอท',
+  '> 2. ลงชื่อเข้าเว็บด้วยบัญชี Discord เดียวกับที่กดปุ่ม',
+  '> 3. ผ่านการยืนยันว่าไม่ใช่บอท แล้วกด Confirm Verification',
+  '> 4. เมื่อสำเร็จ บอทจะมอบยศและแจ้งผลให้คุณโดยเฉพาะ',
+  '> ลิงก์มีอายุ 10 นาที หากหมดอายุให้กด Verify ใหม่ หากไม่ได้รับยศให้ติดต่อแอดมิน',
+  '',
+  '**English — How to receive your role**',
+  '> 1. Press Verify, then Continue Verification in the bot\'s private reply.',
+  '> 2. Sign in on the website with the same Discord account.',
+  '> 3. Complete the human check, then press Confirm Verification.',
+  '> 4. The bot will assign your role and privately confirm the result.',
+  '> Links expire after 10 minutes. Press Verify again if yours expires. Contact an administrator if the role cannot be assigned.',
+].join('\n');
 const styles={blue:ButtonStyle.Primary,gray:ButtonStyle.Secondary,green:ButtonStyle.Success,red:ButtonStyle.Danger};
 export function parseButtonEmoji(value) {
   if(!value)return undefined;
@@ -25,7 +41,9 @@ export function verifyPanel(options,avatar) {
   container.addSectionComponents(section(options.title,options.description,avatar)).addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   const button=new ButtonBuilder().setCustomId(verifyIds.verify).setLabel(options.label).setStyle(styles[options.style]);
   if(options.emoji)button.setEmoji(parseButtonEmoji(options.emoji));
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(button,new ButtonBuilder().setCustomId(verifyIds.info).setLabel(options.infoLabel).setStyle(ButtonStyle.Secondary)));
+  const info=new ButtonBuilder().setCustomId(verifyIds.info).setLabel(options.infoLabel).setStyle(ButtonStyle.Secondary);
+  if(options.infoEmoji)info.setEmoji(parseButtonEmoji(options.infoEmoji));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(button,info));
   return payload(container);
 }
 export function verifyPrompt(url,avatar) {
@@ -39,7 +57,8 @@ export function verifyResult(ok,avatar,message) {
     `${emoji} ${message||(ok?'Your identity has been verified successfully. Your role has been assigned.':'We could not complete your verification. Please press Verify again or contact an administrator.')}`,avatar)));
 }
 export function verifyInfo(message,avatar) {
-  return payload(new ContainerBuilder().setAccentColor(0x38bdf8).addSectionComponents(section('Verification Info',message,avatar)));
+  const text=!message||message===legacyVerificationInfo||message===defaultVerificationInfo?defaultVerificationInfo:message+'\n\n'+defaultVerificationInfo;
+  return payload(new ContainerBuilder().setAccentColor(0x38bdf8).addSectionComponents(section('Verification Info / วิธีรับยศ',text,avatar)));
 }
 export function validateGrantRole(guild,role,botMember,actorMember) {
   if(!role||role.guild.id!==guild.id||role.id===guild.id||role.managed||role.permissions.has('Administrator'))throw new Error('Choose a normal, non-administrator role.');

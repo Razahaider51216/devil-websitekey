@@ -19,7 +19,7 @@ test('/set-verify opens a private setup panel without any command arguments',()=
   assert.ok(rows.some(row=>row.type===1&&row.components[0].type===8));assert.ok(rows.some(row=>row.type===1&&row.components[0].type===6));
   assert.equal(rows.at(-1).components.at(-1).disabled,true);
   assert.equal(setupModal(draft,'text').toJSON().components.length,3);
-  assert.equal(setupModal(draft,'appearance').toJSON().components.length,4);
+  assert.equal(setupModal(draft,'appearance').toJSON().components.length,5);
   assert.equal(setupModal(draft,'image').toJSON().components[1].component.type,19);
 });
 test('verify Components V2 supports panel image, bot thumbnail, custom emoji/color and requested private result wording',()=>{
@@ -57,9 +57,9 @@ test('bot sends an ephemeral destination panel, grants no role before web approv
   };
   try{
     const verifier=await createVerifier(client,config,{directory:pathToFileURL(directory+'/'),send});
-    const admin={guild,guildId,user:{id:'owner'},memberPermissions:{has:()=>true},reply:async payload=>{editor=payload;},deferUpdate:async()=>{},editReply:async payload=>{editor=payload;},followUp:async()=>{throw new Error('Unexpected setup failure');}};
+    const admin={guild,guildId,user:{id:'owner'},memberPermissions:{has:()=>true},reply:async payload=>{editor=payload;},deferReply:async payload=>assert.equal(payload.flags,MessageFlags.Ephemeral),deferUpdate:async()=>{},editReply:async payload=>{editor=payload;},followUp:async()=>{throw new Error('Unexpected setup failure');}};
     await verifier.handle({...admin,isChatInputCommand:()=>true,commandName:'set-verify'});
-    assert.equal(editor.flags,MessageFlags.IsComponentsV2|MessageFlags.Ephemeral);
+    assert.equal(editor.flags,MessageFlags.IsComponentsV2);
     const controls=editor.components[0].toJSON().components;
     const channelControl=controls.find(row=>row.type===1&&row.components[0].type===8).components[0].custom_id;
     const roleControl=controls.find(row=>row.type===1&&row.components[0].type===6).components[0].custom_id;
@@ -78,7 +78,7 @@ test('setup panel edits drafts through private controls, validates input and iso
   const role={id:roleId,guild,managed:false,permissions:{has:()=>false},comparePositionTo:()=>-1};
   const client={user:{displayAvatarURL:()=>avatar}};
   const setup=createVerifySetup({client,config:{guildId,website:'https://devil-hub.dev'},getPanel:()=>null,publish:async(_i,draft)=>{published=structuredClone(draft);}});
-  const base={guild,guildId,user:{id:'owner'},memberPermissions:{has:()=>true},reply:async payload=>{editor=payload;},deferUpdate:async()=>{},editReply:async payload=>{editor=payload;},followUp:async payload=>{errors.push(payload);},showModal:async modal=>{shownModal=modal;}};
+  const base={guild,guildId,user:{id:'owner'},memberPermissions:{has:()=>true},reply:async payload=>{editor=payload;},deferReply:async()=>{},deferUpdate:async()=>{},editReply:async payload=>{editor=payload;},followUp:async payload=>{errors.push(payload);},showModal:async modal=>{shownModal=modal;}};
   await setup.handle({...base,isChatInputCommand:()=>true,commandName:'set-verify'});
   const raw=editor.components[0].toJSON();const prefix=raw.components.at(-1).components[0].custom_id.replace(/text$/,'');
   const control=(action,extra={})=>({...base,isChatInputCommand:()=>false,customId:prefix+action,...extra});

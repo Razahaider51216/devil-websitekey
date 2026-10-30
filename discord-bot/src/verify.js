@@ -14,13 +14,20 @@ export async function createVerifier(client,config,options={}) {
   let state={panels:{},jobs:{}};
   try { state=JSON.parse(await readFile(stateFile,'utf8'));if(!state.panels||!state.jobs)throw new Error('Invalid verification state'); }
   catch(error){if(error.code!=='ENOENT')throw new Error('Verification state file is invalid');}
+  state.setupDrafts ||= {};
   let saves=Promise.resolve(),polling=false,timer;
   function save() {
     const data=JSON.stringify(state);const task=saves.catch(()=>{}).then(async()=>{await mkdir(directory,{recursive:true});await writeFile(temporary,data,'utf8');await rename(temporary,stateFile);});saves=task;return task;
   }
   const avatar=()=>client.user.displayAvatarURL({size:128,extension:'png'});
   const api=(action,input)=>verificationApi(config,action,input,options.send);
-  const setup=createVerifySetup({client,config,getPanel:channelId=>state.panels[channelId],publish:async(interaction,draft)=>{
+  const setup=createVerifySetup({client,config,getPanel:channelId=>state.panels[channelId],
+    getSavedDraft:(ownerId,guildId)=>state.setupDrafts[guildId+':'+ownerId],
+    saveDraft:async draft=>{state.setupDrafts[draft.guildId+':'+draft.ownerId]=draft;await save();},
+    getDefaultPanel:channelId=>{
+      const saved=state.panels[channelId]?[channelId,state.panels[channelId]]:Object.entries(state.panels).sort((a,b)=>(b[1].updatedAt||0)-(a[1].updatedAt||0))[0];
+      return saved?{channelId:saved[0],...saved[1]}:null;
+    },publish:async(interaction,draft)=>{
     const channel=await interaction.guild.channels.fetch(draft.channelId),role=await interaction.guild.roles.fetch(draft.roleId);
     if(!channel||channel.guildId!==config.guildId||!channel.isTextBased()||typeof channel.send!=='function')throw new Error('Choose a server text channel.');
     if(!channel.permissionsFor(client.user)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.EmbedLinks,PermissionFlagsBits.ReadMessageHistory]))throw new Error('The bot needs View Channel, Send Messages, Embed Links and Read Message History.');
@@ -30,7 +37,7 @@ export async function createVerifier(client,config,options={}) {
     if(old){try{message=await channel.messages.fetch(old.messageId);}catch(error){if(error.code!==10008)throw error;}}
     if(message&&message.author.id!==client.user.id)throw new Error('The previous panel does not belong to this bot.');
     const payload=verifyPanel(draft.options,avatar());message=message?await message.edit(payload):await channel.send(payload);
-    state.panels[channel.id]={messageId:message.id,...draft.options,roleId:role.id};await save();
+    state.panels[channel.id]={messageId:message.id,...draft.options,roleId:role.id,updatedAt:Date.now()};await save();
   }});
   async function respond(job,ok,message) {
     const result=verifyResult(ok,avatar(),message);

@@ -5,8 +5,13 @@ import { panel, resetModal, resetResult, ids, info } from './ui.js';
 import { register } from './register.js';
 import { resetHwid } from './reset.js';
 import { createVerifier } from './verify.js';
+import { acquireBotLock,createInteractionGate } from './process-guard.js';
 
 const config = readConfig();
+let processLock;
+try { processLock=await acquireBotLock(config.applicationId); }
+catch(error){console.error(error.message);process.exit(1);}
+const acceptInteraction=createInteractionGate();
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const verifier = await createVerifier(client,config);
 const panels = new Map();
@@ -35,7 +40,7 @@ async function publish(channel) {
 }
 client.once(Events.ClientReady, async ready => {
   if (ready.application.id !== config.applicationId) {
-    console.error('Bot token does not match DISCORD_APPLICATION_ID'); client.destroy(); process.exitCode = 1; return;
+    console.error('Bot token does not match DISCORD_APPLICATION_ID'); client.destroy();await processLock.close();process.exitCode = 1; return;
   }
   console.log('DEVIL HUB HWID bot connected');
   verifier.start();
@@ -44,6 +49,7 @@ client.once(Events.ClientReady, async ready => {
 });
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit() && !interaction.isAnySelectMenu()) return;
+  if (!acceptInteraction(interaction.id)) return;
   try {
     if (interaction.guildId !== config.guildId) {
       await interaction.reply({ content: 'ใช้บอทในเซิร์ฟเวอร์ DEVIL HUB ที่กำหนดเท่านั้น', flags: MessageFlags.Ephemeral }); return;
@@ -72,6 +78,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.editReply(resetResult(result, client.user.displayAvatarURL({ size: 128, extension: 'png' })));
     }
   } catch (error) {
+    if ([10062,40060].includes(error.code)) { console.warn('Discord interaction is no longer available:',error.code);return; }
     if (interaction.commandName === 'set-verify' || interaction.customId?.startsWith('devilhub:verify:')) {
       console.error('Verification interaction failed:',error.code||error.name);
       try { await verifier.error(interaction,error); } catch { /* Interaction expired. */ }
@@ -90,6 +97,6 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 client.on(Events.Error, error => console.error('Discord client error:', error.code || error.name));
-for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { verifier.stop();client.destroy(); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { verifier.stop();client.destroy();void processLock.close().finally(()=>process.exit(0)); });
 try { await client.login(config.token); }
-catch (error) { console.error('Discord connection failed:', error.code || error.name); process.exitCode = 1; }
+catch (error) { console.error('Discord connection failed:', error.code || error.name);client.destroy();await processLock.close();process.exitCode = 1; }

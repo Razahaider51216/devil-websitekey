@@ -12,17 +12,30 @@ custom emojis. Move its highest role above the role being awarded. Managed roles
 the everyone role and roles with Administrator permission cannot be selected.
 
 Use **Edit Text** for the title, description and private Info instructions.
-**Buttons & Color** changes the Verify/Info labels, custom or Unicode button
-emoji and hex accent color (leave blank for no accent). The color dropdown
+**Buttons & Color** changes the Verify/Info labels, separate custom or Unicode
+emojis for both buttons, and hex accent color (leave blank for no accent). The color dropdown
 chooses the Verify button style: Blue, Gray, Green or Red. **Image** opens a
 form accepting an HTTPS image URL or a file upload up to 10 MB; leave both blank
 to remove the image. **Preview** shows a private, noninteractive preview.
 **Publish** creates or updates the public panel in the selected channel.
-Drafts expire after 30 minutes of inactivity and are lost on a bot restart;
-published settings and pending verification jobs remain saved. Only the
+Drafts are automatically saved per administrator after each change, including
+the selected channel and role. Reopening `/set-verify` or restarting the bot
+restores the latest draft. Existing controls recover their saved draft after a
+restart. The first setup without a saved draft loads the current or latest
+published panel. Reselecting the same channel keeps unpublished edits. Publish
+still explicitly controls when the public message changes. Only the
 administrator who opened a draft can edit it, and permissions and role hierarchy
 are checked again when publishing. Panels use Components V2 with a media image
 and the bot's avatar thumbnail.
+
+Info always includes Thai and English instructions, including panels created
+before bilingual support. Custom instructions appear above the bilingual guide.
+
+The bot takes an OS-backed, loopback-only instance lock for its application ID
+before connecting to Discord. A second copy exits without handling interactions.
+Repeated gateway interaction IDs are also ignored, and modal saves acknowledge
+Discord before validation or disk writes. Do not bypass the instance lock by
+running older copies of the bot.
 
 Pressing Verify creates an ephemeral Components V2 response with the text
 "Verify your identity to receive your role." and a Continue Verification link.

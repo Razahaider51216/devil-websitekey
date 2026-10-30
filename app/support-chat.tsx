@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ImagePlus, Loader2, MessageSquare, Send, X, ShieldCheck } from "lucide-react";
+import { ImagePlus, Loader2, MessageSquare, Send, X } from "lucide-react";
 import { useLanguage } from "./language";
 
 export type SupportThread = { id:string; name:string; avatarUrl?:string|null;provider?:string|null;preview:string; updatedAt:number; unread:boolean };
@@ -95,7 +95,7 @@ export function ChatConversation({ path, admin = false }: { path:string; admin?:
         const name=message.author?.name || (message.role === "admin" ? "DEVIL HUB" : text("ผู้ใช้","User"));
         const own=admin ? message.role === "admin" : message.role !== "admin";
         return <article className={`support-message-row ${message.role === "admin" ? "from-admin" : "from-user"} ${own?"is-own":""}`} key={message.id}>
-          <ChatAvatar name={name} src={message.author?.avatarUrl}/><div className="support-message-content">
+          <ChatAvatar name={name} src={message.role === "admin" ? "/devilhubv3.png" : message.author?.avatarUrl}/><div className="support-message-content">
             <div className="support-message-author"><strong title={name}>{name}</strong>{message.author?.provider&&<small>{message.author.provider.toUpperCase()}</small>}{message.role==="admin"&&<b>ADMIN</b>}</div>
             <div className="support-message">{message.text && <p>{message.text}</p>}{message.imageUrl && <a href={message.imageUrl} target="_blank" rel="noopener noreferrer"><img src={message.imageUrl} alt={text("รูปแนบในแชท","Chat attachment")} loading="lazy"/></a>}</div>
             <time className="support-message-time" dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleString(language === "th" ? "th-TH" : "en-US",{ month:"short",day:"numeric",hour:"2-digit",minute:"2-digit" })}</time>
@@ -120,7 +120,7 @@ export function SupportChat() {
   if (pathname?.startsWith("/admin")) return null;
   return <aside className="support-widget">
     {open && <section id="devil-support-chat" className="support-panel" role="dialog" aria-label="DEVIL HUB Support">
-      <header><div><ShieldCheck size={20}/><span><strong>DEVIL HUB</strong><small>ADMIN SUPPORT // v1.1.0</small></span></div><button className="support-icon-button" aria-label={language === "th" ? "ปิดแชท" : "Close chat"} onClick={() => { setOpen(false);button.current?.focus(); }}><X size={20}/></button></header>
+      <header><div><img className="support-brand-logo" src="/devilhubv3.png" alt="DEVIL HUB" width={34} height={28}/><span><strong>DEVIL HUB</strong><small>ADMIN SUPPORT // v1.1.0</small></span></div><button className="support-icon-button" aria-label={language === "th" ? "ปิดแชท" : "Close chat"} onClick={() => { setOpen(false);button.current?.focus(); }}><X size={20}/></button></header>
       <ChatConversation path="support/thread"/>
     </section>}
     <button ref={button} className="support-launcher" aria-expanded={open} aria-controls="devil-support-chat" aria-label={language === "th" ? "แชทกับแอดมิน" : "Chat with admin"} onClick={() => setOpen(!open)}>{open ? <X size={24}/> : <MessageSquare size={24}/>}</button>

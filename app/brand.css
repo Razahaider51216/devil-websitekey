@@ -1,0 +1,3 @@
+.brand-mark img{display:block;width:100%;height:100%;object-fit:contain;border-radius:4px}
+.support-brand-logo{width:34px;height:28px;object-fit:contain;border-radius:4px;flex-shrink:0}
+.support-message-row.from-admin .support-avatar img{object-fit:contain;background:#03080e}

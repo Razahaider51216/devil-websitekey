@@ -2,17 +2,27 @@
 
 ## Discord verification
 
-Use `/set-verify channel:#verify role:@Verified`. The administrator must have
+Use `/set-verify` without any arguments to open a private Components V2 setup
+panel. Choose the target channel and awarded role using its dropdown menus.
+Selecting a channel loads that channel's existing panel configuration, if any.
+The administrator must have
 Manage Server and Manage Roles. The bot needs Manage Roles, View Channel, Send
 Messages, Embed Links, Read Message History and permission to use the configured
 custom emojis. Move its highest role above the role being awarded. Managed roles,
 the everyone role and roles with Administrator permission cannot be selected.
 
-Optional slash-command settings: `title`, `description`, `button-label`,
-`button-color` (Blue / Gray / Green / Red), `emoji` (Unicode, `<:name:id>` or
-`<a:name:id>`), `color` (hex), `image-url`, `image` (upload), `info-label` and
-`info-text`. Repeating the command updates the panel in the chosen channel.
-Panels use Components V2 with a media image and the bot's avatar thumbnail.
+Use **Edit Text** for the title, description and private Info instructions.
+**Buttons & Color** changes the Verify/Info labels, custom or Unicode button
+emoji and hex accent color (leave blank for no accent). The color dropdown
+chooses the Verify button style: Blue, Gray, Green or Red. **Image** opens a
+form accepting an HTTPS image URL or a file upload up to 10 MB; leave both blank
+to remove the image. **Preview** shows a private, noninteractive preview.
+**Publish** creates or updates the public panel in the selected channel.
+Drafts expire after 30 minutes of inactivity and are lost on a bot restart;
+published settings and pending verification jobs remain saved. Only the
+administrator who opened a draft can edit it, and permissions and role hierarchy
+are checked again when publishing. Panels use Components V2 with a media image
+and the bot's avatar thumbnail.
 
 Pressing Verify creates an ephemeral Components V2 response with the text
 "Verify your identity to receive your role." and a Continue Verification link.

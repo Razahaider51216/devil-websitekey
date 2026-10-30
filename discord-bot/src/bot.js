@@ -43,7 +43,7 @@ client.once(Events.ClientReady, async ready => {
   catch (error) { console.error('Command registration failed:', error.code || error.name); }
 });
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit()) return;
+  if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit() && !interaction.isAnySelectMenu()) return;
   try {
     if (interaction.guildId !== config.guildId) {
       await interaction.reply({ content: 'ใช้บอทในเซิร์ฟเวอร์ DEVIL HUB ที่กำหนดเท่านั้น', flags: MessageFlags.Ephemeral }); return;

@@ -1,6 +1,7 @@
 import { MessageFlags,PermissionFlagsBits,Routes } from 'discord.js';
 import { mkdir,readFile,rename,writeFile } from 'node:fs/promises';
-import { imageUrl,parseButtonEmoji,validateGrantRole,verifyIds,verifyPanel,verifyPrompt,verifyResult,verifyInfo } from './verify-ui.js';
+import { validateGrantRole,verifyIds,verifyPanel,verifyPrompt,verifyResult,verifyInfo } from './verify-ui.js';
+import { createVerifySetup } from './verify-setup.js';
 
 export async function verificationApi(config,action,input,send=fetch) {
   const response=await send(config.website+'/api/bot/verify/'+action,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
@@ -19,6 +20,18 @@ export async function createVerifier(client,config,options={}) {
   }
   const avatar=()=>client.user.displayAvatarURL({size:128,extension:'png'});
   const api=(action,input)=>verificationApi(config,action,input,options.send);
+  const setup=createVerifySetup({client,config,getPanel:channelId=>state.panels[channelId],publish:async(interaction,draft)=>{
+    const channel=await interaction.guild.channels.fetch(draft.channelId),role=await interaction.guild.roles.fetch(draft.roleId);
+    if(!channel||channel.guildId!==config.guildId||!channel.isTextBased()||typeof channel.send!=='function')throw new Error('Choose a server text channel.');
+    if(!channel.permissionsFor(client.user)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.EmbedLinks,PermissionFlagsBits.ReadMessageHistory]))throw new Error('The bot needs View Channel, Send Messages, Embed Links and Read Message History.');
+    const [me,actor]=await Promise.all([interaction.guild.members.fetchMe(),interaction.guild.members.fetch(interaction.user.id)]);
+    validateGrantRole(interaction.guild,role,me,actor);
+    const old=state.panels[channel.id];let message;
+    if(old){try{message=await channel.messages.fetch(old.messageId);}catch(error){if(error.code!==10008)throw error;}}
+    if(message&&message.author.id!==client.user.id)throw new Error('The previous panel does not belong to this bot.');
+    const payload=verifyPanel(draft.options,avatar());message=message?await message.edit(payload):await channel.send(payload);
+    state.panels[channel.id]={messageId:message.id,...draft.options,roleId:role.id};await save();
+  }});
   async function respond(job,ok,message) {
     const result=verifyResult(ok,avatar(),message);
     await client.rest.patch(Routes.webhookMessage(job.applicationId,job.token,'@original'),{auth:false,body:{flags:MessageFlags.IsComponentsV2,components:result.components.map(c=>c.toJSON()),allowed_mentions:{parse:[]}}});
@@ -53,29 +66,7 @@ export async function createVerifier(client,config,options={}) {
     }catch(error){console.error('Verification worker failed:',error.code||error.name);}finally{polling=false;}
   }
   async function handle(interaction) {
-    if(interaction.isChatInputCommand()&&interaction.commandName==='set-verify'){
-      if(!interaction.memberPermissions?.has([PermissionFlagsBits.ManageGuild,PermissionFlagsBits.ManageRoles]))throw new Error('Manage Server and Manage Roles permissions are required.');
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      const channel=interaction.options.getChannel('channel',true),role=interaction.options.getRole('role',true);
-      if(channel.guildId!==config.guildId||!channel.isTextBased()||typeof channel.send!=='function')throw new Error('Choose a server text channel.');
-      if(!channel.permissionsFor(client.user)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.EmbedLinks,PermissionFlagsBits.ReadMessageHistory]))throw new Error('The bot needs View Channel, Send Messages, Embed Links and Read Message History.');
-      const [me,actor]=await Promise.all([interaction.guild.members.fetchMe(),interaction.guild.members.fetch(interaction.user.id)]);
-      validateGrantRole(interaction.guild,role,me,actor);
-      const string=name=>interaction.options.getString(name),color=string('color'),upload=interaction.options.getAttachment('image');
-      if(color&&!/^#?[a-f0-9]{6}$/i.test(color))throw new Error('Use a hex color such as #38bdf8.');
-      if(upload&&(!upload.contentType?.startsWith('image/')||upload.size>10*1024*1024))throw new Error('Upload an image no larger than 10 MB.');
-      const options={title:string('title')||'DEVIL HUB',description:string('description')||'> Verify your identity to unlock your server role.',
-        label:string('button-label')||'Verify',style:string('button-color')||'green',emoji:string('emoji')||null,color:color?parseInt(color.replace('#',''),16):0x38bdf8,
-        image:imageUrl(upload?.url||string('image-url')||config.website+'/devilhubv3.png'),infoLabel:string('info-label')||'Info',
-        infoText:string('info-text')||'Press Verify, open your private website link, sign in with the same Discord account and complete the human verification. Your role will be assigned automatically.',roleId:role.id};
-      parseButtonEmoji(options.emoji);
-      const old=state.panels[channel.id];let message;
-      if(old){try{message=await channel.messages.fetch(old.messageId);}catch(error){if(error.code!==10008)throw error;}}
-      if(message&&message.author.id!==client.user.id)throw new Error('The previous panel does not belong to this bot.');
-      const payload=verifyPanel(options,avatar());message=message?await message.edit(payload):await channel.send(payload);
-      state.panels[channel.id]={messageId:message.id,...options};await save();
-      await interaction.editReply({content:`Verification panel published in <#${channel.id}>. Successful verification awards <@&${role.id}>.`,allowedMentions:{parse:[]}});return true;
-    }
+    if(await setup.handle(interaction))return true;
     if(!interaction.isButton()||![verifyIds.verify,verifyIds.info].includes(interaction.customId))return false;
     const panel=state.panels[interaction.channelId];
     if(!panel||panel.messageId!==interaction.message.id)throw new Error('This panel is no longer active. Ask an administrator to run /set-verify again.');

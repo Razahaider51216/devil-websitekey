@@ -4,9 +4,13 @@ import { usePathname } from "next/navigation";
 import { ImagePlus, Loader2, MessageSquare, Send, X, ShieldCheck } from "lucide-react";
 import { useLanguage } from "./language";
 
-export type SupportThread = { id:string; name:string; preview:string; updatedAt:number; unread:boolean };
-type Message = { id:number; role:string; text:string; imageUrl:string|null; createdAt:number };
+export type SupportThread = { id:string; name:string; avatarUrl?:string|null;provider?:string|null;preview:string; updatedAt:number; unread:boolean };
+type Message = { id:number; role:string; text:string; imageUrl:string|null; createdAt:number;author?:{name:string;avatarUrl:string|null;provider:string|null} };
 type Conversation = { thread:SupportThread|null;messages:Message[];hasOlder:boolean;hasMore:boolean };
+export function ChatAvatar({name,src}:{name:string;src?:string|null}) {
+  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);
+  return <span className="support-avatar">{src&&!failed ? <img src={src} alt={name} referrerPolicy="no-referrer" onError={()=>setFailed(true)}/> : <span aria-label={name}>{name.slice(0,1).toLocaleUpperCase()}</span>}</span>;
+}
 export async function chatApi<T = unknown>(path:string, init:RequestInit = {}):Promise<T> {
   const response = await fetch("/api/"+path, { ...init, credentials:"same-origin", cache:"no-store",
     headers:typeof init.body === "string" ? { "Content-Type":"application/json" } : undefined });
@@ -87,16 +91,22 @@ export function ChatConversation({ path, admin = false }: { path:string; admin?:
       {loading && <Loader2 className="spin" size={20}/>}
       {older && <button className="quiet-button" disabled={olderBusy} onClick={() => void loadOlder()}>{text("ข้อความก่อนหน้า","Earlier messages")}</button>}
       {!loading && !messages.length && !login && <div className="support-empty"><MessageSquare size={30}/><strong>{text("ต้องการความช่วยเหลือ?","Need help?")}</strong><p>{text("ส่งข้อความหรือรูปให้แอดมินได้ที่นี่","Send a message or screenshot to the admin.")}</p></div>}
-      {messages.map(message => <article className={`support-message ${message.role === "admin" ? "from-admin" : "from-user"}`} key={message.id}>
-        <small>{message.role === "admin" ? "DEVIL HUB / ADMIN" : text("ผู้ใช้","USER")}</small>
-        {message.text && <p>{message.text}</p>}{message.imageUrl && <a href={message.imageUrl} target="_blank" rel="noopener noreferrer"><img src={message.imageUrl} alt={text("รูปแนบในแชท","Chat attachment")} loading="lazy"/></a>}
-        <time dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleString(language === "th" ? "th-TH" : "en-US",{ month:"short",day:"numeric",hour:"2-digit",minute:"2-digit" })}</time>
-      </article>)}
+      {messages.map(message => {
+        const name=message.author?.name || (message.role === "admin" ? "DEVIL HUB" : text("ผู้ใช้","User"));
+        const own=admin ? message.role === "admin" : message.role !== "admin";
+        return <article className={`support-message-row ${message.role === "admin" ? "from-admin" : "from-user"} ${own?"is-own":""}`} key={message.id}>
+          <ChatAvatar name={name} src={message.author?.avatarUrl}/><div className="support-message-content">
+            <div className="support-message-author"><strong title={name}>{name}</strong>{message.author?.provider&&<small>{message.author.provider.toUpperCase()}</small>}{message.role==="admin"&&<b>ADMIN</b>}</div>
+            <div className="support-message">{message.text && <p>{message.text}</p>}{message.imageUrl && <a href={message.imageUrl} target="_blank" rel="noopener noreferrer"><img src={message.imageUrl} alt={text("รูปแนบในแชท","Chat attachment")} loading="lazy"/></a>}</div>
+            <time className="support-message-time" dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleString(language === "th" ? "th-TH" : "en-US",{ month:"short",day:"numeric",hour:"2-digit",minute:"2-digit" })}</time>
+          </div>
+        </article>;
+      })}
     </div>
     {error && <div className="support-error" role="alert">{login ? <a href="/">{text("เข้าสู่ระบบก่อนเริ่มแชท","Sign in to start chatting")}</a> : error}</div>}
     {!login && <form className="support-composer" onSubmit={send}>
       {preview && <div className="support-attachment"><img src={preview} alt=""/><button type="button" aria-label={text("ลบรูป","Remove image")} disabled={busy} onClick={() => { setFile(null);clientId.current=""; }}><X size={14}/></button></div>}
-      <textarea aria-label={text("ข้อความถึงแอดมิน","Message to admin")} placeholder={text("พิมพ์ข้อความ…","Type a message…")} maxLength={2000} value={draft} disabled={busy} onChange={e => { setDraft(e.target.value);clientId.current=""; }}/>
+      <textarea rows={1} aria-label={text("ข้อความถึงแอดมิน","Message to admin")} placeholder={text("พิมพ์ข้อความ…","Type a message…")} maxLength={2000} value={draft} disabled={busy} onChange={e => { setDraft(e.target.value);clientId.current=""; }}/>
       <div className="support-composer-actions"><input hidden type="file" ref={fileInput} accept="image/png,image/jpeg,image/webp" onChange={e => void attach(e.target.files?.[0])}/>
         <button type="button" className="support-icon-button" title={text("แนบรูป","Attach image")} aria-label={text("แนบรูป","Attach image")} disabled={busy} onClick={() => fileInput.current?.click()}><ImagePlus size={19}/></button><small>PNG / JPG / WEBP · 4 MB</small>
         <button type="submit" className="support-send" disabled={busy || !draft.trim() && !file} aria-label={text("ส่งข้อความ","Send message")}>{busy ? <Loader2 size={17} className="spin"/> : <Send size={17}/>}</button>

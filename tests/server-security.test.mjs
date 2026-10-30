@@ -82,7 +82,7 @@ test('server security integration',async t=>{
       try{return await handle(request,route.split('?')[0].split('/'));}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
     }
     function form(text='',image=null,clientId=crypto.randomUUID()) {
-      const body=new FormData();body.set('text',text);body.set('clientId',clientId);body.set('role','admin');
+      const body=new FormData();body.set('text',text);body.set('clientId',clientId);body.set('role','admin');body.set('authorName','Forged name');body.set('avatarUrl','https://evil.test/avatar.png');
       if(image)body.set('image',image,'attachment.png');return body;
     }
     try {
@@ -91,9 +91,11 @@ test('server security integration',async t=>{
       assert.equal((await a.call('support/thread')).data.thread,null);
       const posted=await raw(a,'support/thread','POST',form('<script>plain text</script>'));
       assert.equal(posted.status,200);const sent=(await posted.json()).message;assert.equal(sent.role,'user');
+      assert.equal(sent.author.name,'tester');assert.equal(sent.author.provider,'discord');assert.ok(sent.author.avatarUrl.startsWith('https://cdn.discordapp.com/'));
       const own=(await a.call('support/thread')).data;const id=own.thread.id;
       assert.equal(own.messages[0].text,'<script>plain text</script>');assert.equal((await b.call('support/thread?thread='+id)).data.messages.length,0);
       let inbox=(await operator.call('admin/support/threads')).data;assert.equal(inbox.threads[0].id,id);assert.equal(inbox.threads[0].unread,true);
+      assert.equal(inbox.threads[0].avatarUrl,sent.author.avatarUrl);assert.equal(inbox.threads[0].provider,'discord');
       assert.equal((await a.call('admin/support/threads/'+id)).status,403);
       assert.equal((await operator.call('admin/support/threads/'+id+'/read','POST',{through:sent.id})).status,200);
       assert.equal((await operator.call('admin/support/threads')).data.threads[0].unread,false);
@@ -118,7 +120,8 @@ test('server security integration',async t=>{
       env.GOOGLE_CLIENT_ID='integration.apps.googleusercontent.com';env.GOOGLE_CLIENT_SECRET='google-secret-fixture';
       const google=new Browser();googleSubject='223456789012345678';await google.loginGoogle();
       assert.equal((await google.call('support/thread')).data.thread,null,'Google and Discord identities never share a conversation');
-      assert.equal((await raw(google,'support/thread','POST',form('Google support message'))).status,200);
+      const googlePost=await raw(google,'support/thread','POST',form('Google support message'));assert.equal(googlePost.status,200);
+      const googleMessage=(await googlePost.json()).message;assert.equal(googleMessage.author.name,'Google tester');assert.equal(googleMessage.author.provider,'google');assert.ok(googleMessage.author.avatarUrl.startsWith('https://lh3.googleusercontent.com/'));
       assert.equal((await google.call('admin/support/threads')).status,403,'Google identity cannot become a Discord admin');
       await operator.call('auth/logout','POST',{});assert.equal((await operator.call('admin/support/threads')).status,401);
       assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0,'chat does not touch keys');

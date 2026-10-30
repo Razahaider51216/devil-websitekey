@@ -5,11 +5,16 @@ import {createClient} from '@libsql/client';
 test('support migration preserves existing keys/devices and indexes conversation pagination',async()=>{
   const db=createClient({url:':memory:'});
   try {
-    for(const file of readdirSync(new URL('../drizzle/',import.meta.url)).filter(name=>name.endsWith('.sql')&&!name.startsWith('0007')).sort())await db.executeMultiple(readFileSync(new URL('../drizzle/'+file,import.meta.url),'utf8'));
+    for(const file of readdirSync(new URL('../drizzle/',import.meta.url)).filter(name=>name.endsWith('.sql')&&name<'0007').sort())await db.executeMultiple(readFileSync(new URL('../drizzle/'+file,import.meta.url),'utf8'));
     await db.execute("INSERT INTO access_keys(id,key_hash,label,source,created_at,duration_kind,duration_amount) VALUES('fixture-key','fixture-hash','existing','admin',100,'permanent',0)");
     await db.execute("INSERT INTO key_devices(key_id,hwid_hash,bound_at) VALUES('fixture-key','fixture-device',101)");
     const keys=(await db.execute('SELECT * FROM access_keys')).rows,devices=(await db.execute('SELECT * FROM key_devices')).rows;
     await db.executeMultiple(readFileSync(new URL('../drizzle/0007_support_chat.sql',import.meta.url),'utf8'));
+    await db.execute("INSERT INTO support_threads(id,owner_id,owner_name,updated_at) VALUES('old-thread','discord:fixture','Original name',102)");
+    await db.execute("INSERT INTO support_messages(thread_id,client_id,author_id,role,text,created_at) VALUES('old-thread','fixture-retry','discord:fixture','user','Original message',103)");
+    await db.executeMultiple(readFileSync(new URL('../drizzle/0008_support_profiles.sql',import.meta.url),'utf8'));
+    const message=(await db.execute('SELECT text,author_name,author_avatar FROM support_messages')).rows[0];
+    assert.equal(message.text,'Original message');assert.equal(message.author_name,null);assert.equal(message.author_avatar,null);
     assert.deepEqual((await db.execute('SELECT * FROM access_keys')).rows,keys);
     assert.deepEqual((await db.execute('SELECT * FROM key_devices')).rows,devices);
     const indexes=(await db.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'support_%'")).rows.map(row=>row.name);

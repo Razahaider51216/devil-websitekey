@@ -3,6 +3,7 @@ import { and, eq, gt, lt, desc, asc, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { supportMessages as messages, supportThreads as threads } from "../db/schema";
 import { discordUser, requireDiscordAdmin } from "./discord-auth";
+import { discordMedia } from "./discord-domain";
 import { googleUser } from "./google-auth";
 import { hash } from "./domain";
 import { readJson, requireOrigin, RequestError } from "./security";
@@ -18,12 +19,16 @@ async function member(req: Request) {
   return user;
 }
 function idValue(value: string) { if (!/^[a-f0-9]{64}$/.test(value)) fail(404, "Conversation not found");return value; }
-function messageView(row: typeof messages.$inferSelect) {
+function messageView(row: typeof messages.$inferSelect, thread: typeof threads.$inferSelect) {
   return { id: row.id, role: row.role, text: row.text, createdAt: row.createdAt,
+    author: { name: row.authorName || (row.role === "user" ? thread.ownerName : "DEVIL HUB"),
+      avatarUrl: row.authorAvatar || (row.role === "user" ? thread.ownerAvatar : null),
+      provider: row.authorProvider || (row.role === "user" ? thread.ownerProvider : null) },
     imageUrl: row.imageKey ? `/api/support/images/${row.id}` : null };
 }
 function threadView(row: typeof threads.$inferSelect, admin: boolean) {
   return { id: row.id, name: row.ownerName, updatedAt: row.updatedAt, preview: row.preview,
+    avatarUrl: row.ownerAvatar, provider: row.ownerProvider,
     unread: admin ? row.lastUserId > row.adminReadId : row.lastAdminId > row.userReadId };
 }
 export async function chatInput(req: Request) {
@@ -66,6 +71,8 @@ export async function handleSupport(req: Request, path: string[], rate: Rate) {
   const admin = path[0] === "admin";
   const user = admin ? await requireDiscordAdmin(req) : await member(req);
   const ownerId = `${user.provider}:${user.id}`;
+  const profile = { name:user.name.slice(0,120), provider:user.provider,
+    avatarUrl:user.provider === "discord" ? discordMedia(user.id,user.avatar,user.decoration,user.discriminator).avatarUrl : user.avatarUrl || null };
   await rate(req, "support-read:" + await hash(ownerId), 90);
   const db = getDb(), route = path.join("/"), url = new URL(req.url);
   if (route === "admin/support/threads" && req.method === "GET") {
@@ -89,6 +96,10 @@ export async function handleSupport(req: Request, path: string[], rate: Rate) {
   const id = admin ? idValue(path[3] || "") : await hash("support:" + ownerId);
   let thread = await db.select().from(threads).where(eq(threads.id, id)).get();
   if (admin && !thread) fail(404, "Conversation not found");
+  if (!admin && thread && (thread.ownerName !== profile.name || thread.ownerAvatar !== profile.avatarUrl || thread.ownerProvider !== profile.provider)) {
+    const fields = { ownerName:profile.name,ownerAvatar:profile.avatarUrl,ownerProvider:profile.provider };
+    await db.update(threads).set(fields).where(eq(threads.id,id));thread = { ...thread,...fields };
+  }
   const read = admin ? path[4] === "read" : path[1] === "read";
   if (req.method === "POST") {
     requireOrigin(req);
@@ -103,7 +114,7 @@ export async function handleSupport(req: Request, path: string[], rate: Rate) {
     await rate(req, "support-send:" + await hash(ownerId), 10);
     const input = await chatInput(req);
     if (!thread) {
-      await db.insert(threads).values({ id, ownerId, ownerName:user.name.slice(0,120), updatedAt:Date.now() }).onConflictDoNothing();
+      await db.insert(threads).values({ id, ownerId, ownerName:profile.name,ownerAvatar:profile.avatarUrl,ownerProvider:profile.provider, updatedAt:Date.now() }).onConflictDoNothing();
       thread = await db.select().from(threads).where(eq(threads.id,id)).get();
     }
     if (!thread) fail(503,"Conversation unavailable");
@@ -113,6 +124,7 @@ export async function handleSupport(req: Request, path: string[], rate: Rate) {
       const key = input.image ? `support/${id}/${crypto.randomUUID()}` : null;
       if (key) await store().put(key,input.image!.bytes,{ httpMetadata:{ contentType:input.image!.type } });
       row = await db.insert(messages).values({ threadId:id, authorId:ownerId, clientId:input.clientId, role:admin?"admin":"user",
+        authorName:profile.name,authorAvatar:profile.avatarUrl,authorProvider:profile.provider,
         text:input.text, imageKey:key, imageType:input.image?.type, imageBytes:input.image?.bytes.length, createdAt:Date.now() }).onConflictDoNothing().returning().get();
       if (!row) { if (key) await store().delete(key);row = await db.select().from(messages).where(identity).get(); }
     }
@@ -122,7 +134,7 @@ export async function handleSupport(req: Request, path: string[], rate: Rate) {
       preview:sql`CASE WHEN ${threads.lastMessageId} <= ${row.id} THEN ${(row.text || "Image").slice(0,160)} ELSE ${threads.preview} END`,
       ...(admin ? { lastAdminId:sql`max(${threads.lastAdminId}, ${row.id})` } : { lastUserId:sql`max(${threads.lastUserId}, ${row.id})` }),
     }).where(eq(threads.id,id));
-    return reply({ message:messageView(row) });
+    return reply({ message:messageView(row,thread) });
   }
   if (req.method !== "GET" || read) fail(405,"Method not allowed");
   const after = Number(url.searchParams.get("after") || 0);
@@ -131,5 +143,5 @@ export async function handleSupport(req: Request, path: string[], rate: Rate) {
   const rows = thread ? await db.select().from(messages).where(and(eq(messages.threadId,id),after ? gt(messages.id,after) : undefined,before ? lt(messages.id,before) : undefined))
     .orderBy(after ? asc(messages.id) : desc(messages.id)).limit(51) : [];
   const page = rows.slice(0,50);if (!after) page.reverse();
-  return reply({ thread:thread ? threadView(thread,admin) : null,messages:page.map(messageView),hasMore:after>0 && rows.length>50,hasOlder:!after && rows.length>50 });
+  return reply({ thread:thread ? threadView(thread,admin) : null,messages:page.map(row => messageView(row,thread!)),hasMore:after>0 && rows.length>50,hasOlder:!after && rows.length>50 });
 }

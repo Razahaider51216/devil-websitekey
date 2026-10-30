@@ -34,6 +34,7 @@ export const siteSettings = sqliteTable("site_settings", {
 });
 export const supportThreads = sqliteTable("support_threads", {
   id: text("id").primaryKey(), ownerId: text("owner_id").notNull().unique(), ownerName: text("owner_name").notNull(),
+  ownerAvatar: text("owner_avatar"), ownerProvider: text("owner_provider"),
   updatedAt: integer("updated_at").notNull(), preview: text("preview").notNull().default(""),
   lastMessageId: integer("last_message_id").notNull().default(0), lastUserId: integer("last_user_id").notNull().default(0),
   lastAdminId: integer("last_admin_id").notNull().default(0), adminReadId: integer("admin_read_id").notNull().default(0),
@@ -42,6 +43,7 @@ export const supportThreads = sqliteTable("support_threads", {
 export const supportMessages = sqliteTable("support_messages", {
   id: integer("id").primaryKey({ autoIncrement: true }), threadId: text("thread_id").notNull().references(() => supportThreads.id),
   clientId: text("client_id").notNull(), authorId: text("author_id").notNull(), role: text("role").notNull(),
+  authorName: text("author_name"), authorAvatar: text("author_avatar"), authorProvider: text("author_provider"),
   text: text("text").notNull(), imageKey: text("image_key"), imageType: text("image_type"), imageBytes: integer("image_bytes"),
   createdAt: integer("created_at").notNull(),
 }, table => [index("support_messages_thread_idx").on(table.threadId, table.id),

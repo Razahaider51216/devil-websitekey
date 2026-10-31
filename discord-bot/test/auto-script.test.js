@@ -53,14 +53,16 @@ test('channel shows a bounded preview, requester and timing; complete txt stays 
     assert.equal(m.dms[0].files.length,1);assert.equal(m.dms[0].files[0].attachment.toString('utf8'),code);
     const publicResult=m.publicEdits.at(-1);
     assert.match(publicResult.content,/complete `.txt` file has been sent/);
-    const embed=publicResult.embeds[0].toJSON();assert.equal(embed.thumbnail.url,avatar);assert.ok(embed.timestamp);assert.ok(embed.fields.some(x=>x.name==='Timeout'));
-    assert.ok(embed.fields.some(x=>x.name==='Requested by'&&x.value.includes(m.msg.author.id)));
-    assert.ok(embed.fields.some(x=>x.name==='System'&&x.value.includes(result.name)));
-    assert.ok(embed.fields.some(x=>x.name==='Elapsed'));
+    const embed=publicResult.embeds[0].toJSON();assert.equal(embed.thumbnail.url,avatar);assert.ok(embed.timestamp);assert.ok(embed.fields.some(x=>x.name.endsWith('Timeout')));
+    assert.ok(embed.fields.some(x=>x.name.endsWith('Requested by')&&x.value.includes(m.msg.author.id)));
+    assert.ok(embed.fields.some(x=>x.name.endsWith('System')&&x.value.includes(result.name)));
+    assert.ok(embed.fields.some(x=>x.name.endsWith('Elapsed')));
+    assert.ok(embed.description.startsWith('<a:emoji_25:1540658596487102464>'));
     assert.match(embed.description,/```lua/);assert.ok(embed.description.length<1500);
     assert.ok(!JSON.stringify(publicResult).includes(code));assert.equal(publicResult.files,undefined);
     const closed=f.message({author:{id:'999999999999999999',bot:false,send:async()=>{throw Object.assign(new Error(),{code:50007});}}});
     await f.bot.onMessage(closed.msg);assert.match(closed.publicEdits.at(-1).content,/could not send/);
+    assert.ok(closed.publicEdits.at(-1).embeds[0].toJSON().description.startsWith('<:ojic_018:1546638491478265946>'));
     assert.match(JSON.stringify(closed.publicEdits.at(-1)),/DM delivery failed/);
     assert.ok(!closed.publicEdits.at(-1).content.includes('has been sent'));
   }finally{await f.cleanup();}
@@ -107,6 +109,7 @@ test('public progress starts before generation and refreshes elapsed time until 
   try{
     await f.command();const m=f.message(),running=f.bot.onMessage(m.msg);await started;
     assert.match(JSON.stringify(m.publicReplies),/Writing your Lua system/);assert.equal(m.dms.length,0);
+    assert.equal(m.publicReplies[0].embeds[0].toJSON().description,'<a:emoji_12:1537864050254422138> Writing your Lua system…');
     time=5000;t.mock.timers.tick(5000);await new Promise(resolve=>setImmediate(resolve));
     assert.match(JSON.stringify(m.publicEdits),/5.0s/);
     release();await running;

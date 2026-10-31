@@ -54,7 +54,7 @@ export async function createAutoScript(client,config,{directory=new URL('../data
     const controller=new AbortController(),job={controller,channelId:message.channelId};active.set(userId,job);cooldown.set(userId,time+30_000);
     const timer=setTimeout(()=>controller.abort(),generationTimeout);const started=now();
     const valid=()=>!closing&&!controller.signal.aborted&&channels[message.channelId]===setting;
-    let pending,heartbeat,stage='Writing your Lua system… / กำลังเขียนโค้ด…',updates=Promise.resolve();
+    let pending,heartbeat,stage='Writing your Lua system…',updates=Promise.resolve();
     const options=()=>({userId,request:message.content,elapsed:now()-started,stage});
     // Serialize edits so a delayed progress update cannot overwrite the result.
     const update=payload=>{updates=updates.then(()=>pending.edit(payload)).catch(()=>{});return updates;};
@@ -67,12 +67,12 @@ export async function createAutoScript(client,config,{directory=new URL('../data
       heartbeat=setInterval(()=>{if(valid())void update(channelProgress(avatar(),options()));},5000);
       const result=await generate(config,{prompt:message.content.trim(),userId,guildId:message.guildId,channelId:message.channelId,messageId:message.id},controller.signal);
       if(!valid())throw new Error('Generation was cancelled or timed out. Please try again.');
-      stage='Checking Lua syntax… / กำลังตรวจไวยากรณ์…';await update(channelProgress(avatar(),options()));
+      stage='Checking Lua syntax…';await update(channelProgress(avatar(),options()));
       let syntax={checked:false,valid:true};if(!result.refusal)syntax=await check(result.code);
       if(!valid())throw new Error('Generation was cancelled or timed out. Please try again.');
       if(!syntax.valid)throw new Error('The generated code failed syntax checks. Please request a smaller system and try again. / โค้ดไม่ผ่านการตรวจไวยากรณ์ กรุณาลองขอระบบที่เล็กลง');
       const {long,...payload}=scriptResult(result,avatar(),{elapsed:now()-started,checked:syntax.checked,requestId:message.id});
-      stage='Sending the complete file by DM… / กำลังส่งไฟล์ฉบับเต็มทาง DM…';await update(channelProgress(avatar(),options()));
+      stage='Sending the complete file by DM…';await update(channelProgress(avatar(),options()));
       let delivered=false;
       if(valid())try{await message.author.send(payload);delivered=true;}catch{/* Report failed DM delivery in the channel without publishing the full file. */}
       stopProgress();

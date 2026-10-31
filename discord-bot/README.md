@@ -1,5 +1,53 @@
 # DEVIL HUB HWID bot
 
+## Automatic Lua scripts
+
+An administrator with Manage Server can use `/auto-create-script channel:#channel`
+to enable typed Lua feature requests, or `/remove-autocreate-script channel:#channel`
+to disable them. Configuration is saved in `data/auto-script.json` and restored on
+restart. Only explicitly enabled channels in DISCORD_GUILD_ID are monitored;
+bot/webhook messages and duplicate message IDs are ignored. Removing a channel
+cancels its pending requests. No user messages are deleted.
+
+Users type a feature request (up to 2,000 characters) in that channel. The request
+itself remains an ordinary visible channel message; the generated reply is sent
+privately through DM. Discord does not support ephemeral replies to ordinary
+messages. Users must allow DMs from this server. The bot first opens a private
+progress reply; if DM delivery is blocked, generation is not started and only a
+generic channel notice is sent.
+
+Short scripts appear inside a `lua` code block in a blue embed with the bot logo,
+system name, placement/use instructions, generation duration, 90-second timeout,
+syntax-check status and footer timestamp. Code too long for the embed, or code
+containing Markdown fences, is delivered intact as a `.txt` attachment in DM.
+The public confirmation is plain text outside any embed and says that the file
+was sent only after Discord successfully accepts the private attachment.
+
+Generation uses the website's existing AI binding through authenticated
+`POST /api/bot/scripts/generate`; DISCORD_BOT_API_SECRET stays on the server.
+No additional AI key belongs in a public Discord message. Deploy the matching
+website code before restarting this bot. Message Content Intent must be enabled
+in Discord Developer Portal → Bot → Privileged Gateway Intents (verified enabled
+for the current application). The client now requests Guild Messages and Message
+Content in addition to Guilds; no member/presence intent is required.
+
+The generator creates native Roblox Studio Luau, including a compact DEVIL HUB
+GUI for interactive systems such as flight in a developer's own game. It does
+not load the private supported-game sources, invent unknown game remotes, or run
+the generated code. A local Luau compiler performs syntax checks only when
+available. It is auto-detected at the workspace's `luau-tools/luau-compile.exe`
+(or Linux `luau-compile`); optionally set LUAU_COMPILER_PATH. Missing compiler
+status is shown honestly, and failed syntax checks do not deliver broken code.
+Compilation does not establish Roblox gameplay correctness.
+
+Limits: one active request per user, two concurrent requests per bot process,
+30-second per-user cooldown, 10 requests per user per UTC day, 20 total per minute
+and 100 total per UTC day. Provider availability and Workers AI quotas also apply;
+no subscription upgrade is performed by this feature. Duplicate request IDs and
+quota counters are kept in the existing rate_limits table, without storing user
+prompts or generated source in the website database. The bot token, shared API
+secret, HWID reset and verification state are separate from generated code.
+
 ## Discord verification
 
 Use `/set-verify` without any arguments to open a private Components V2 setup
@@ -54,7 +102,7 @@ The existing `DISCORD_BOT_API_SECRET` must match the Worker secret. No bot token
 is added to the browser or Worker. Apply migration `0009_discord_verification.sql`
 and deploy the website before starting this version. Install dependencies with
 `npm ci`, then restart the bot with `npm start`. Commands are registered on ready;
-`npm run register` also registers both commands without deleting unrelated ones.
+`npm run register` also registers all four commands without deleting unrelated ones.
 
 Keep `data/verify.json` private: it contains saved panel settings and short-lived
 Discord interaction webhook credentials for restart recovery. The whole data/
@@ -78,7 +126,8 @@ It is not a Cloudflare Worker process; only the authenticated reset API runs the
    from the bot token, Discord OAuth Client Secret, and website KEY_SECRET.
 5. OAuth2 → URL Generator: select `bot` + `applications.commands`. Select View
    Channels, Send Messages, Read Message History, Attach Files; invite to the
-   configured server. No privileged intents or Administrator permission required.
+   configured server. Enable Message Content Intent for automatic Lua requests;
+   Administrator permission is not required.
 6. In this directory run `npm ci`, `npm run check`, then `npm start`.
    The bot upserts `/setdevilhub` on ready; `npm run register` also registers it.
 7. A server member with Manage Server runs `/setdevilhub channel:#your-channel`.

@@ -6,14 +6,16 @@ import { register } from './register.js';
 import { resetHwid } from './reset.js';
 import { createVerifier } from './verify.js';
 import { acquireBotLock,createInteractionGate } from './process-guard.js';
+import {createAutoScript} from './auto-script.js';
 
 const config = readConfig();
 let processLock;
 try { processLock=await acquireBotLock(config.applicationId); }
 catch(error){console.error(error.message);process.exit(1);}
 const acceptInteraction=createInteractionGate();
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent] });
 const verifier = await createVerifier(client,config);
+const autoScript=await createAutoScript(client,config);
 const panels = new Map();
 const busy = new Set();
 const stateFile = new URL('../data/panels.json', import.meta.url);
@@ -44,7 +46,7 @@ client.once(Events.ClientReady, async ready => {
   }
   console.log('DEVIL HUB HWID bot connected');
   verifier.start();
-  try { await register(config); console.log('/setdevilhub and /set-verify ready'); }
+  try { await register(config); console.log('HWID, verification and auto-script commands ready'); }
   catch (error) { console.error('Command registration failed:', error.code || error.name); }
 });
 client.on(Events.InteractionCreate, async interaction => {
@@ -55,6 +57,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.reply({ content: 'ใช้บอทในเซิร์ฟเวอร์ DEVIL HUB ที่กำหนดเท่านั้น', flags: MessageFlags.Ephemeral }); return;
     }
     if (await verifier.handle(interaction)) return;
+    if (await autoScript.handle(interaction)) return;
     if (interaction.isChatInputCommand() && interaction.commandName === 'setdevilhub') {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
         await interaction.reply({ content: 'คำสั่งนี้สำหรับผู้ดูแลเซิร์ฟเวอร์เท่านั้น', flags: MessageFlags.Ephemeral }); return;
@@ -97,6 +100,7 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 client.on(Events.Error, error => console.error('Discord client error:', error.code || error.name));
-for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { verifier.stop();client.destroy();void processLock.close().finally(()=>process.exit(0)); });
+client.on(Events.MessageCreate,message=>{void autoScript.onMessage(message).catch(error=>console.error('Auto-script delivery failed:',error.code||error.name));});
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { autoScript.stop();verifier.stop();client.destroy();void processLock.close().finally(()=>process.exit(0)); });
 try { await client.login(config.token); }
 catch (error) { console.error('Discord connection failed:', error.code || error.name);client.destroy();await processLock.close();process.exitCode = 1; }

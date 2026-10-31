@@ -1,7 +1,7 @@
 import {mkdir,readFile,rename,writeFile} from 'node:fs/promises';
 import {ChannelType,MessageFlags,PermissionFlagsBits} from 'discord.js';
 import {generateLua,checkLua} from './lua-generator.js';
-import {generationTimeout,progress,scriptError,scriptResult} from './auto-script-ui.js';
+import {generationTimeout,scriptResult,channelProgress,channelPreview,channelFailure} from './auto-script-ui.js';
 
 export async function createAutoScript(client,config,{directory=new URL('../data/',import.meta.url),generate=generateLua,check=checkLua,now=Date.now}={}){
   const file=new URL('auto-script.json',directory);let channels={};
@@ -22,8 +22,8 @@ export async function createAutoScript(client,config,{directory=new URL('../data
       await interaction.editReply('Choose a text channel in this server.');return true;
     }
     const enabled=interaction.commandName==='auto-create-script';
-    if(enabled&&!channel.permissionsFor(client.user)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages])){
-      await interaction.editReply('The bot needs View Channel and Send Messages in that channel.');return true;
+    if(enabled&&!channel.permissionsFor(client.user)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.EmbedLinks])){
+      await interaction.editReply('The bot needs View Channel, Send Messages and Embed Links in that channel.');return true;
     }
     const change=configuring.then(async()=>{
       const previous=channels[channel.id];
@@ -31,11 +31,10 @@ export async function createAutoScript(client,config,{directory=new URL('../data
       try{await save();}catch(error){if(previous)channels[channel.id]=previous;else delete channels[channel.id];throw error;}
       for(const job of active.values())if(job.channelId===channel.id)job.controller.abort();
     });configuring=change.catch(()=>{});await change;
-    await interaction.editReply({content:enabled?`Enabled in <#${channel.id}>. Type a Lua feature request there; replies are sent privately in DM.\nเปิดแล้ว พิมพ์ระบบที่ต้องการในช่องนี้ บอทจะส่งผลลัพธ์ทาง DM`
+    await interaction.editReply({content:enabled?`Enabled in <#${channel.id}>. Progress and a code preview appear here; the complete file is sent by DM.\nเปิดแล้ว แสดงสถานะและตัวอย่างโค้ดในช่องนี้ ส่งไฟล์ฉบับเต็มทาง DM`
       :`Disabled in <#${channel.id}>. / ปิดระบบสร้างสคริปต์ในช่องนี้แล้ว`,allowedMentions:{parse:[]}});
     return true;
   }
-  async function notice(message,content){try{await message.reply({content,allowedMentions:{parse:[],repliedUser:false}});}catch{/* No code or prompts are sent to the public channel. */}}
   async function onMessage(message){
     const setting=channels[message.channelId];
     if(closing||!setting||message.guildId!==config.guildId||message.author.bot||message.webhookId)return;
@@ -46,33 +45,43 @@ export async function createAutoScript(client,config,{directory=new URL('../data
     if(active.has(userId)||active.size>=2||(cooldown.get(userId)||0)>time){
       if((notified.get(userId)||0)<=time){
         notified.set(userId,time+30_000);
-        try{await message.author.send(scriptError('The generator is busy or you recently sent a request. Please wait 30 seconds and try again. / กรุณารอ 30 วินาทีแล้วลองใหม่',avatar()));}catch{/* No public code fallback. */}
+        try{await message.reply(channelFailure('The generator is busy or you recently sent a request. Please wait 30 seconds and try again. / กรุณารอ 30 วินาทีแล้วลองใหม่',avatar(),{userId,request:message.content}));}catch{/* The channel may be unavailable. */}
       }
       return;
     }
-    // Reserve before awaiting Discord so simultaneous DM openings cannot exceed
+    // Reserve before awaiting Discord so simultaneous requests cannot exceed
     // the user/global concurrency limits.
     const controller=new AbortController(),job={controller,channelId:message.channelId};active.set(userId,job);cooldown.set(userId,time+30_000);
     const timer=setTimeout(()=>controller.abort(),generationTimeout);const started=now();
     const valid=()=>!closing&&!controller.signal.aborted&&channels[message.channelId]===setting;
-    let pending;
+    let pending,heartbeat,stage='Writing your Lua system… / กำลังเขียนโค้ด…',updates=Promise.resolve();
+    const options=()=>({userId,request:message.content,elapsed:now()-started,stage});
+    // Serialize edits so a delayed progress update cannot overwrite the result.
+    const update=payload=>{updates=updates.then(()=>pending.edit(payload)).catch(()=>{});return updates;};
+    const stopProgress=()=>clearInterval(heartbeat);
+    controller.signal.addEventListener('abort',stopProgress,{once:true});
     try{
-      try{pending=await message.author.send(progress(avatar()));}
-      catch{await notice(message,'I could not send you a DM. Enable direct messages for this server and try again. / กรุณาเปิดรับ DM จากเซิร์ฟเวอร์แล้วลองใหม่');return;}
+      pending=await message.reply(channelProgress(avatar(),options()));
       if(message.content.length>2000)throw new Error('Keep the request under 2,000 characters. / กรุณาใช้คำขอไม่เกิน 2,000 ตัวอักษร');
       if(!valid())throw new Error('Generation was cancelled because this channel was disabled.');
+      heartbeat=setInterval(()=>{if(valid())void update(channelProgress(avatar(),options()));},5000);
       const result=await generate(config,{prompt:message.content.trim(),userId,guildId:message.guildId,channelId:message.channelId,messageId:message.id},controller.signal);
       if(!valid())throw new Error('Generation was cancelled or timed out. Please try again.');
+      stage='Checking Lua syntax… / กำลังตรวจไวยากรณ์…';await update(channelProgress(avatar(),options()));
       let syntax={checked:false,valid:true};if(!result.refusal)syntax=await check(result.code);
       if(!valid())throw new Error('Generation was cancelled or timed out. Please try again.');
       if(!syntax.valid)throw new Error('The generated code failed syntax checks. Please request a smaller system and try again. / โค้ดไม่ผ่านการตรวจไวยากรณ์ กรุณาลองขอระบบที่เล็กลง');
       const {long,...payload}=scriptResult(result,avatar(),{elapsed:now()-started,checked:syntax.checked,requestId:message.id});
-      await pending.edit(payload);
-      if(long)await notice(message,'The code is too long for an embed. I sent the complete .txt file in DM. / โค้ดยาวเกินกรอบข้อความ ส่งไฟล์ .txt ฉบับเต็มให้ทาง DM แล้ว');
-      else await notice(message,'Your private reply is in DM. / ส่งคำตอบส่วนตัวให้ทาง DM แล้ว');
+      stage='Sending the complete file by DM… / กำลังส่งไฟล์ฉบับเต็มทาง DM…';await update(channelProgress(avatar(),options()));
+      let delivered=false;
+      if(valid())try{await message.author.send(payload);delivered=true;}catch{/* Report failed DM delivery in the channel without publishing the full file. */}
+      stopProgress();
+      if(!valid())throw new Error('Generation was cancelled or timed out. Please try again.');
+      await update(channelPreview(result,avatar(),{...options(),delivered,checked:syntax.checked}));
     }catch(error){
-      try{await pending.edit(scriptError(error.message?.slice(0,400)||'Generation failed. Please try again.',avatar(),now()-started));}catch{/* DMs may have been disabled while generating. */}
-    }finally{clearTimeout(timer);if(active.get(userId)===job)active.delete(userId);for(const map of[cooldown,notified])for(const[id,expiry]of map)if(expiry<=now())map.delete(id);}
+      stopProgress();
+      if(pending)await update(channelFailure(error.message?.slice(0,400)||'Generation failed. Please try again.',avatar(),options()));
+    }finally{stopProgress();controller.signal.removeEventListener('abort',stopProgress);clearTimeout(timer);if(active.get(userId)===job)active.delete(userId);for(const map of[cooldown,notified])for(const[id,expiry]of map)if(expiry<=now())map.delete(id);}
   }
   function stop(){closing=true;for(const job of active.values())job.controller.abort();}
   return{handle,onMessage,stop};

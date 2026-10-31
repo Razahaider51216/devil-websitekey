@@ -10,18 +10,23 @@ bot/webhook messages and duplicate message IDs are ignored. Removing a channel
 cancels its pending requests. No user messages are deleted.
 
 Users type a feature request (up to 2,000 characters) in that channel. The request
-itself remains an ordinary visible channel message; the generated reply is sent
-privately through DM. Discord does not support ephemeral replies to ordinary
-messages. Users must allow DMs from this server. The bot first opens a private
-progress reply; if DM delivery is blocked, generation is not started and only a
-generic channel notice is sent.
+itself remains visible. The bot immediately replies in the same channel, tagging
+only the requester and showing the requested system, bot logo, generation status,
+elapsed time, 90-second timeout and footer timestamp. Progress refreshes every
+five seconds and the same message becomes the final code preview. The bot needs
+View Channel, Send Messages and Embed Links in that channel.
 
 Short scripts appear inside a `lua` code block in a blue embed with the bot logo,
 system name, placement/use instructions, generation duration, 90-second timeout,
 syntax-check status and footer timestamp. Code too long for the embed, or code
-containing Markdown fences, is delivered intact as a `.txt` attachment in DM.
-The public confirmation is plain text outside any embed and says that the file
-was sent only after Discord successfully accepts the private attachment.
+containing Markdown fences, uses an attachment instead of inline DM code. Every
+successful script includes an intact `.txt` attachment in DM, including short
+scripts. The channel preview is limited to the first 18 lines and 1,200 characters;
+no full-source attachment is uploaded publicly. The confirmation outside the
+embed says the file was sent only after Discord accepts the DM. If DMs are blocked,
+the channel still shows the preview and explains that full-file delivery failed.
+Users can enable server DMs and request again. Disabled channels cancel pending
+generation and stop progress updates.
 
 Generation uses the website's existing AI binding through authenticated
 `POST /api/bot/scripts/generate`; DISCORD_BOT_API_SECRET stays on the server.
@@ -125,7 +130,7 @@ It is not a Cloudflare Worker process; only the authenticated reset API runs the
    Cloudflare Worker Secret. It must be at least 32 characters. This is separate
    from the bot token, Discord OAuth Client Secret, and website KEY_SECRET.
 5. OAuth2 → URL Generator: select `bot` + `applications.commands`. Select View
-   Channels, Send Messages, Read Message History, Attach Files; invite to the
+   Channels, Send Messages, Embed Links, Read Message History, Attach Files; invite to the
    configured server. Enable Message Content Intent for automatic Lua requests;
    Administrator permission is not required.
 6. In this directory run `npm ci`, `npm run check`, then `npm start`.

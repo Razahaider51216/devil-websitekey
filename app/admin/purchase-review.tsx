@@ -21,13 +21,11 @@ export function PurchaseReview({ order, onApproved }: { order: ReviewOrder; onAp
     } catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
   if(order.review)return <p className="shop-review-result"><Check size={15}/>{text("อนุมัติโดยแอดมิน","Approved by admin")} · {order.review.adminId}<br/>{order.review.note}</p>;
-  if(order.status === "paid" || !order.lastError)return null;
-  if(!order.slipUrl || !order.slipSha256)return <p className="shop-order-error">{text("ยังไม่มีรูปสลิปที่บันทึกไว้ ให้ผู้ซื้อแนบสลิปเดิมในคำสั่งซื้อนี้อีกครั้ง ห้ามโอนซ้ำ","No saved slip image. Ask the buyer to submit the same slip to this order again. Do not ask for another payment.")}</p>;
-  if(order.status !== "pending" && order.status !== "expired")return null;
+  if(order.status === "paid")return null;
   return <div className="shop-review"><button className="quiet-button" disabled={busy} onClick={()=>{setError("");setOpen(!open);}}><ShieldCheck size={15}/>{text("ตรวจและอนุมัติคำขอ","Review & approve")}</button>
     {open && <form className="shop-review-form" onSubmit={approve}>
       <h4>{text("ตรวจยอดเข้าก่อนอนุมัติ","Confirm the received payment")} · {money(order.priceSatang)}</h4>
-      <a href={order.slipUrl} target="_blank" rel="noreferrer">{text("เปิดสลิปที่ผู้ซื้อส่ง","Open the buyer's slip")}</a>
+      {order.slipUrl ? <a href={order.slipUrl} target="_blank" rel="noreferrer">{text("เปิดสลิปที่ผู้ซื้อส่ง","Open the buyer's slip")}</a> : <p className="muted">{text("ผู้ซื้อยังไม่ได้แนบสลิป แอดมินสามารถตรวจยอดเข้าจากบัญชีธนาคารแล้วอนุมัติได้","No slip uploaded yet. An admin can confirm the incoming bank transfer and approve this order.")}</p>}
       <div className="shop-review-fields">
         <label>{text("รหัสธนาคารผู้โอน","Sending bank code")}<input required inputMode="numeric" pattern="[0-9]{3}" maxLength={3} placeholder="004" value={draft.bankCode} onChange={e=>setDraft({...draft,bankCode:e.target.value})}/></label>
         <label>{text("รหัสธนาคารผู้รับ","Receiving bank code")}<input required inputMode="numeric" pattern="[0-9]{3}" maxLength={3} placeholder="006" value={draft.receivingBank} onChange={e=>setDraft({...draft,receivingBank:e.target.value})}/></label>

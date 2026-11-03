@@ -199,7 +199,7 @@ test('premium shop routes',async t=>{
     assert.equal(await count('access_keys'),1);assert.equal(await count('purchase_reviews'),1);assert.equal(await count('payment_receipts'),1);
     assert.equal(calls,1,'manual review does not call SlipOK again');
   });
-  await t.test('manual review requires evidence, confirmed funds, valid time and the latest reviewed slip',async()=>{
+  await t.test('manual review requires confirmed funds, valid time and the latest order snapshot',async()=>{
     await reset();const admin=await session(adminId),user=await session(),p=await product(admin),empty=await order(user,p.id);
     assert.equal((await call('admin/shop/orders/'+empty.id+'/approve',{method:'POST',cookie:admin,data:approval({...empty,slipSha256:'0'.repeat(64),attempts:0})})).status,409);
     const a=await failedPurchase(admin,user),path='admin/shop/orders/'+a.id+'/approve';
@@ -210,6 +210,30 @@ test('premium shop routes',async t=>{
       assert.ok([400,409].includes(result.status),JSON.stringify(result));
     }
     assert.equal(await count('access_keys'),0);assert.equal(await count('purchase_reviews'),0);
+  });
+  await t.test('admin may approve a new or expired order before any slip upload or verification failure',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin);
+    for(const expired of [false,true]){
+      const a=await order(user,p.id);clock+=2000;
+      if(expired)clock=a.expiresAt+1000;
+      const view=(await call('admin/shop/orders',{cookie:admin})).data.orders.find(o=>o.id===a.id);
+      assert.equal(view.slipUrl,null);assert.equal(view.slipSha256,null);assert.equal(view.lastError,null);assert.equal(view.attempts,0);
+      const result=await call('admin/shop/orders/'+a.id+'/approve',{method:'POST',cookie:admin,
+        data:{...approval(view),transactionRef:expired?'MANUAL-EXPIRED':'MANUAL-NEW'}});
+      assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.data.status,'paid');assert.equal(result.data.slipUrl,null);
+      assert.equal((await call('shop/orders/'+a.id,{cookie:user})).data.key.premium,true);
+    }
+    assert.equal(await count('access_keys'),2);assert.equal(await count('purchase_reviews'),2);assert.equal(calls,0);
+  });
+  await t.test('admin approval safely takes over in-progress automatic verification without duplicate issuance',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock+=2000;providerDelay=150;
+    const automatic=call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});
+    while(!calls)await new Promise(resolve=>setTimeout(resolve,1));
+    const view=(await call('admin/shop/orders',{cookie:admin})).data.orders.find(o=>o.id===a.id);
+    assert.equal(view.status,'verifying');
+    const approved=await call('admin/shop/orders/'+a.id+'/approve',{method:'POST',cookie:admin,data:{...approval(view),transactionRef:'REF123456789'}});
+    assert.equal(approved.status,200,JSON.stringify(approved));assert.equal((await automatic).status,200);
+    assert.equal(await count('access_keys'),1);assert.equal(await count('payment_receipts'),1);assert.equal(await count('purchase_reviews'),1);
   });
   await t.test('concurrent manual approvals, bank-reference replay and image reuse cannot issue multiple keys',async()=>{
     await reset();const admin=await session(adminId),user=await session(),a=await failedPurchase(admin,user),b=await failedPurchase(admin,user,'other-image');

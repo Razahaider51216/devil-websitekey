@@ -80,7 +80,7 @@ function proofMatches(value: StoredProof, order: Order, sha: string, fingerprint
     && value.payment.transferredAt >= Math.floor(order.created_at / 1000) * 1000 && value.payment.transferredAt <= order.expires_at
     && Number.isSafeInteger(value.verifiedAt) && value.verifiedAt >= order.created_at && ["image/png","image/jpeg","image/webp"].includes(value.imageType);
 }
-async function finalize(order: Order, token: string, proof: StoredProof, slipKey: string, review?: ManualReview) {
+async function finalize(order: Order, token: string, proof: StoredProof, slipKey: string | null, review?: ManualReview) {
   const database = db(), now = Date.now(), key = await keyFor(order.key_id, vars().KEY_SECRET || "");
   const ends = expiry(now, { kind: order.duration_kind, amount: order.duration_amount });
   // Receipt ownership, key issuance and Paid are one atomic D1 transaction.
@@ -231,20 +231,21 @@ async function adminRoutes(req: Request, path: string[], deps: Dependencies) {
     const transferredAt=Date.parse(input.transferredAt);
     if (!Number.isFinite(transferredAt) || transferredAt < Math.floor(order.created_at/1000)*1000 || transferredAt > order.expires_at || transferredAt > now+60000)
       throw new RequestError(400,"Transfer time must fall within the original order payment window");
-    if (!order.last_error || !order.slip_key || !order.slip_sha256 || order.status !== "pending")
-      throw new RequestError(409,"This order must have a failed slip submission available for review");
     if (input.slipSha256 !== order.slip_sha256 || input.attempts !== order.verify_attempts)
       throw new RequestError(409,"The submitted slip changed. Refresh and review the latest image");
-    const file=await bucket().get(order.slip_key);
-    if (!file) throw new RequestError(409,"Submitted slip image is unavailable");
+    const file=order.slip_key ? await bucket().get(order.slip_key) : null;
+    if (order.slip_key && !file) throw new RequestError(409,"Submitted slip image is unavailable");
     const transactionId=input.bankCode+":"+input.transactionRef,token=crypto.randomUUID();
+    // The original invoice may have no uploaded image yet. This order-specific
+    // marker identifies manual approval; it is not stored or served as a slip.
+    const receiptHash=order.slip_sha256 || await hash("manual-approval:"+order.id);
     const claim=await database.prepare(`UPDATE purchase_orders SET status='verifying',verify_token=?,verify_started_at=?
-      WHERE id=? AND status='pending' AND verify_token IS NULL AND slip_sha256=? AND verify_attempts=? AND last_error IS NOT NULL RETURNING id`)
-      .bind(token,now,order.id,input.slipSha256,input.attempts).first();
+      WHERE id=? AND status=? AND verify_token IS ? AND slip_sha256 IS ? AND verify_attempts=? RETURNING id`)
+      .bind(token,now,order.id,order.status,order.verify_token,input.slipSha256,input.attempts).first();
     if (!claim) throw new RequestError(409,"Order changed or is already being reviewed. Refresh before retrying");
     try {
-      const proof: StoredProof={orderId:order.id,slipSha256:order.slip_sha256,paymentFingerprint:await hash(order.payment_config),
-        verifiedAt:now,imageType:file.httpMetadata?.contentType || "image/jpeg",
+      const proof: StoredProof={orderId:order.id,slipSha256:receiptHash,paymentFingerprint:await hash(order.payment_config),
+        verifiedAt:now,imageType:file?.httpMetadata?.contentType || "application/octet-stream",
         payment:{transactionId,amountSatang:order.price_satang,transferredAt,receivingBank:input.receivingBank}};
       const paid=await finalize(order,token,proof,order.slip_key,{adminId:actor.id,note:input.note.trim()});
       return reply(await orderView(paid,true));

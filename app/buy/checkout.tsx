@@ -22,7 +22,7 @@ function Payment({ id }: { id: string }) {
   useEffect(() => { let active = true;setQr("");if (order?.qrPayload) QRCode.toDataURL(order.qrPayload,{ width: 420, margin: 4, errorCorrectionLevel: "M", color: { dark: "#001621", light: "#ffffff" } }).then(value => { if (active) setQr(value); }).catch(() => setError(th ? "สร้าง QR ไม่สำเร็จ กรุณารีเฟรช" : "Could not generate the QR. Please refresh."));return () => { active = false; }; }, [order?.qrPayload,th]);
   useEffect(() => { if (!file) { setPreview("");return; }const url = URL.createObjectURL(file);setPreview(url);return () => URL.revokeObjectURL(url); }, [file]);
   useEffect(() => {
-    const verifying=order?.status === "verifying", awaitingReview=order?.status !== "paid" && !!order?.lastError;
+    const verifying=order?.status === "verifying", awaitingReview=!!order && order.status !== "paid";
     if (!verifying && !awaitingReview) return;
     const timer = setInterval(() => { if (!request.current && !document.hidden) load().catch(() => {}); },verifying ? 3000 : 10000);return () => clearInterval(timer);
   }, [order?.status,order?.lastError,load]);

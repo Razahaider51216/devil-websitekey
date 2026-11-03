@@ -18,6 +18,7 @@ import { handleSupport } from "./support-chat";
 import { handleDiscordVerification } from "./discord-verification";
 import { translateMissionTitle } from "./translate-mission-title";
 import { handleLuaGeneration } from "./lua-generation";
+import { handleShop } from "./shop";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -160,6 +161,7 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
   if (path[0] === "discord-verify" || path[0] === "bot" && path[1] === "verify") return handleDiscordVerification(req,path.join("/"),rate);
   if (path[0] === "support" || path[0] === "admin" && path[1] === "support") return handleSupport(req,path,rate);
   if (vars().KEY_MAINTENANCE === "1") return json({ error: "Database migration in progress. Please try again shortly." }, 503, { "Retry-After": "60" });
+  if (path[0] === "shop" || (path[0] === "admin" && path[1] === "shop")) return handleShop(req, path, { admin, rate });
   if (path.join("/") === "bot/reset-hwid") {
     return resetPremiumHwid(req, (env as unknown as { DB?: D1Database }).DB, vars().DISCORD_BOT_API_SECRET || "");
   }

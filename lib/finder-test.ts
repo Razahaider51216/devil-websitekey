@@ -1,3 +1,4 @@
+import { isPremiumSource } from "./premium";
 import { env } from "cloudflare:workers";
 import { and, eq, gte, lt } from "drizzle-orm";
 import { getDb } from "../db";
@@ -45,7 +46,7 @@ export async function handleFinderTest(req: Request, path: string[], deps: Deps)
     if (!verdict.valid) return bad(403, "A valid premium key is required");
     const keyHash = await hash(String(input.key).trim());
     const row = await db.select().from(keys).where(eq(keys.keyHash, keyHash)).get();
-    if (!row || row.source !== "admin" || status(row, now) !== "active") return bad(403, "Finder test requires a key created by an admin");
+    if (!row || !isPremiumSource(row.source) || status(row, now) !== "active") return bad(403, "Finder test requires a premium key");
     const hwidHash = await hash("DEVIL-HWID:v1:" + String(input.hwid).trim());
     return json({ token: await seal({ keyHash, hwidHash, jobId: input.jobId.toLowerCase() }, "finder-test", secret(), 900_000), expiresAt: now + 900_000, ttlSeconds: TTL / 1000 });
   }
@@ -53,7 +54,7 @@ export async function handleFinderTest(req: Request, path: string[], deps: Deps)
   const auth = await unseal(input.token, "finder-test", secret());
   if (!auth || typeof auth.keyHash !== "string" || typeof auth.hwidHash !== "string" || typeof auth.jobId !== "string") return bad(401, "Finder session expired");
   const row = await db.select().from(keys).where(eq(keys.keyHash, auth.keyHash)).get();
-  if (!row || row.source !== "admin" || status(row, now) !== "active") return bad(403, "Premium key expired or revoked");
+  if (!row || !isPremiumSource(row.source) || status(row, now) !== "active") return bad(403, "Premium key expired or revoked");
   const device = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
   if (!device || device.hwidHash !== auth.hwidHash) return bad(403, "Device binding changed");
   if (action.endsWith("report")) {

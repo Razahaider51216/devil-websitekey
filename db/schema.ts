@@ -56,3 +56,24 @@ export const supportMessages = sqliteTable("support_messages", {
   createdAt: integer("created_at").notNull(),
 }, table => [index("support_messages_thread_idx").on(table.threadId, table.id),
   uniqueIndex("support_messages_retry_idx").on(table.threadId, table.authorId, table.clientId)]);
+
+export const shopProducts = sqliteTable("shop_products", {
+  id: text("id").primaryKey(), name: text("name").notNull(), description: text("description").notNull().default(""),
+  priceSatang: integer("price_satang").notNull(), durationKind: text("duration_kind").notNull(), durationAmount: integer("duration_amount").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false), sortOrder: integer("sort_order").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(), deletedAt: integer("deleted_at"),
+}, table => [index("shop_products_catalog_idx").on(table.deletedAt,table.enabled,table.sortOrder)]);
+export const purchaseOrders = sqliteTable("purchase_orders", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull(), ownerName: text("owner_name").notNull(), clientId: text("client_id").notNull(),
+  productId: text("product_id").notNull().references(() => shopProducts.id), productName: text("product_name").notNull(), priceSatang: integer("price_satang").notNull(),
+  durationKind: text("duration_kind").notNull(), durationAmount: integer("duration_amount").notNull(), paymentConfig: text("payment_config").notNull(),
+  status: text("status").notNull().default("pending"), createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(),
+  verifyToken: text("verify_token"), verifyStartedAt: integer("verify_started_at"), verifyAttempts: integer("verify_attempts").notNull().default(0),
+  retryAt: integer("retry_at"), lastError: text("last_error"), slipKey: text("slip_key"), slipSha256: text("slip_sha256"), transactionId: text("transaction_id").unique(),
+  paidAt: integer("paid_at"), keyId: text("key_id").notNull().unique(),
+}, table => [uniqueIndex("purchase_orders_retry_idx").on(table.ownerId,table.clientId), index("purchase_orders_owner_idx").on(table.ownerId,table.createdAt), index("purchase_orders_created_idx").on(table.createdAt)]);
+export const paymentReceipts = sqliteTable("payment_receipts", {
+  transactionId: text("transaction_id").primaryKey(), orderId: text("order_id").notNull().unique().references(() => purchaseOrders.id),
+  amountSatang: integer("amount_satang").notNull(), transferredAt: integer("transferred_at").notNull(), verifiedAt: integer("verified_at").notNull(),
+  receivingBank: text("receiving_bank").notNull(), slipSha256: text("slip_sha256").notNull(),
+});

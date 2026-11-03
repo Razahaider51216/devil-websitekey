@@ -6,10 +6,10 @@ import type { Language } from "../lib/translations";
 
 export function Brand() { return <a className="brand" href="/" aria-label="DEVIL KEY home"><span className="brand-mark"><img src="/devilhubv3.png" alt="DEVIL HUB" width={48} height={40}/></span><span>DEVIL<span className="brand-light"> KEY</span><small>OFFICIAL ACCESS PORTAL</small></span></a>; }
 export const AdminVisibility = createContext(false);
-export function Header({ admin = false, active = "keys" }: { admin?: boolean; active?: "keys" | "games" }) {
+export function Header({ admin = false, active = "keys" }: { admin?: boolean; active?: "keys" | "games" | "buy" }) {
   const { t } = useLanguage();
   const showAdmin = useContext(AdminVisibility);
-  return <header className="topbar"><div className="topbar-inner"><Brand/><nav><a className={!admin && active === "keys" ? "nav-active" : ""} href="/">{t("รับคีย์")} <span>GET ACCESS</span></a><a className={active === "games" ? "nav-active" : ""} href="/games">{t("แมพที่รองรับ")}</a><a href="/#how-to">{t("วิธีใช้งาน")}</a></nav><div className="header-actions"><LanguageSwitch/>{(admin || showAdmin) && <a className="admin-link" href={admin ? "/" : "/admin"}>{admin ? <KeyRound size={15}/> : <ShieldCheck size={15}/>} {admin ? t("กลับหน้ารับคีย์") : "ADMIN"}<ArrowUpRight size={13}/></a>}</div></div></header>;
+  return <header className="topbar"><div className="topbar-inner"><Brand/><nav><a className={!admin && active === "keys" ? "nav-active" : ""} href="/">{t("รับคีย์")} <span>GET ACCESS</span></a><a className={active === "games" ? "nav-active" : ""} href="/games">{t("แมพที่รองรับ")}</a><a className={active === "buy" ? "nav-active" : ""} href="/buy">{t("ซื้อพรีเมียม")}</a><a href="/#how-to">{t("วิธีใช้งาน")}</a></nav><div className="header-actions"><LanguageSwitch/>{(admin || showAdmin) && <a className="admin-link" href={admin ? "/" : "/admin"}>{admin ? <KeyRound size={15}/> : <ShieldCheck size={15}/>} {admin ? t("กลับหน้ารับคีย์") : "ADMIN"}<ArrowUpRight size={13}/></a>}</div></div></header>;
 }
 export function Footer() { return <footer className="footer"><span>© {new Date().getFullYear()} DEVIL HUB<span className="footer-slash">/</span> BUILT FOR THE NEXT LEVEL.</span><span className="mono"><i className="status-dot"/> DEVIL KEY · ACCESS SYSTEM</span></footer>; }
 export function CopyButton({ value, label }: { value: string; label?: string }) {

@@ -1,5 +1,7 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ซื้อพรีเมียม": "Buy premium",
+  "ร้านค้าพรีเมียม": "Premium shop",
   "ช่องแชท": "Support inbox",
   "หรือ": "or",
   "ยืนยันก่อนเข้าสู่ระบบ": "Verify you are human before signing in",

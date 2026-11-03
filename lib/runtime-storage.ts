@@ -1,3 +1,4 @@
+import { isPremiumSource } from "./premium";
 import { env } from "cloudflare:workers";
 import { documentRequest, scriptLanding } from "./script-landing";
 import { eq } from "drizzle-orm";
@@ -69,7 +70,7 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
     const pointer = await active(); if (!pointer) fail(503, "Private runtime is not published yet");
     const manifest = await readManifest(pointer), now = Date.now();
     const keyRow = await getDb().select().from(keys).where(eq(keys.keyHash, await hash(String(input.key).trim()))).get();
-    const premium = keyRow?.source === "admin" && status(keyRow, now) === "active";
+    const premium = isPremiumSource(keyRow?.source) && status(keyRow, now) === "active";
     const ttl = Math.min(86_400_000, verdict.expiresAt === null ? 86_400_000 : verdict.expiresAt - now);
     if (ttl <= 0) fail(403, "Key expired");
     const ticket = await seal({ ...pointer, keyHash: await hash(String(input.key).trim()), hwidHash: await hash("DEVIL-HWID:v1:" + String(input.hwid).trim()) }, "runtime-delivery", vars().KEY_SECRET || "", ttl);
@@ -96,7 +97,7 @@ export async function handleRuntime(req: Request, path: string[], deps: Dependen
     if (name.startsWith("main/")) name = rootRef + "/" + name.slice(5);
     else if (name.startsWith("refs/heads/main/")) name = rootRef + "/" + name.slice(16);
     if (!Object.hasOwn(manifest.files, name)) fail(404, "File is not in this runtime release");
-    if (manifest.files[name].entitlement === "break-x2" && row.source !== "admin") return scriptLanding();
+    if (manifest.files[name].entitlement === "break-x2" && !isPremiumSource(row.source)) return scriptLanding();
     const metadata = manifest.files[name], object = await bucket().get(blobKey(metadata.sha256));
     if (!object || object.size !== metadata.bytes) fail(503, "Runtime file is unavailable");
     const bytes = new Uint8Array(await object.arrayBuffer());

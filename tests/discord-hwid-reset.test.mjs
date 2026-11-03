@@ -79,6 +79,14 @@ test('reset preserves key and expiry, records only hashes, and replay cannot era
   assert.equal((await f.call({ interactionId: '333333333333333333' })).status, 429);
   assert.equal(f.sqlite.prepare('SELECT hwid_hash FROM key_devices').get().hwid_hash, 'new-device-hash');
 });
+
+test('a purchased premium key retains the same owner check and HWID reset semantics', async () => {
+  const f = fixture();await f.seed({ source: 'purchase', owner: actor, expires: Date.now() + 86400000 });
+  const before = f.sqlite.prepare('SELECT * FROM access_keys').get();
+  assert.equal((await f.call()).data.status, 'reset');
+  assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM key_devices').get().n, 0);
+  assert.deepEqual(f.sqlite.prepare('SELECT * FROM access_keys').get(), before);
+});
 test('concurrent reset requests have one winner and the cooldown claim is atomic', async () => {
   const f = fixture(); await f.seed();
   const result = await Promise.all([f.call(), f.call({ interactionId: '333333333333333333' })]);

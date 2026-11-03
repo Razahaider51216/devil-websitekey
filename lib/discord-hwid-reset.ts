@@ -1,3 +1,4 @@
+import { isPremiumSource } from "./premium";
 import { hash } from "./domain";
 import { readJson, RequestError } from "./security";
 
@@ -36,7 +37,7 @@ export async function resetPremiumHwid(req: Request, db: D1Database | undefined,
   if (!keyPattern.test(key)) return json({ error: "premium_required" }, 403);
   const row = await db.prepare(`SELECT id,source,owner_id,expires_at,revoked_at FROM access_keys WHERE key_hash=?`)
     .bind(await hash(key)).first<{ id: string; source: string; owner_id: string | null; expires_at: number | null; revoked_at: number | null }>();
-  if (!row || row.source !== "admin" || row.revoked_at !== null || row.expires_at !== null && row.expires_at <= now
+  if (!row || !isPremiumSource(row.source) || row.revoked_at !== null || row.expires_at !== null && row.expires_at <= now
     || row.owner_id !== null && row.owner_id !== discordUserId) return json({ error: "premium_required" }, 403);
   const id = resetSettingId(row.id);
   const previous = await db.prepare("SELECT value,updated_at FROM site_settings WHERE id=?").bind(id).first<{ value: string; updated_at: number }>();
@@ -54,7 +55,7 @@ export async function resetPremiumHwid(req: Request, db: D1Database | undefined,
     db.prepare(`INSERT INTO site_settings(id,value,updated_at)
       SELECT ?,json_object('interactionId',?,'actorId',?,'blockedHwidHash',
         (SELECT hwid_hash FROM key_devices WHERE key_id=?),'blockedUntil',?),?
-      WHERE EXISTS(SELECT 1 FROM access_keys WHERE id=? AND source='admin' AND revoked_at IS NULL
+      WHERE EXISTS(SELECT 1 FROM access_keys WHERE id=? AND source IN ('admin','purchase') AND revoked_at IS NULL
         AND (expires_at IS NULL OR expires_at>?) AND (owner_id IS NULL OR owner_id=?))
       ON CONFLICT(id) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at
         WHERE site_settings.updated_at<=?`)

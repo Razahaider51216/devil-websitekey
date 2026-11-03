@@ -67,6 +67,13 @@ async function order(cookie,id,clientId=crypto.randomUUID()){
   const response=await call('shop/orders',{method:'POST',cookie,data:{productId:id,clientId}});assert.ok([200,201].includes(response.status),JSON.stringify(response));return response.data;
 }
 function upload(extra=''){const form=new FormData();form.set('slip',new File([new Uint8Array([255,216,...new TextEncoder().encode(extra),255,217])],'slip.jpg',{type:'image/jpeg'}));return form;}
+async function failedPurchase(admin,user,extra=''){
+  const p=await product(admin),a=await order(user,p.id);clock+=2000;proof={code:1009};
+  assert.equal((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload(extra)})).status,503);
+  return (await call('admin/shop/orders',{cookie:admin})).data.orders.find(o=>o.id===a.id);
+}
+const approval=o=>({bankCode:'004',receivingBank:'006',transactionRef:'REVIEW12345',transferredAt:new Date(o.createdAt+1000).toISOString(),
+  note:'Confirmed incoming transfer in bank account',confirmReceived:true,slipSha256:o.slipSha256,attempts:o.attempts});
 const count=async table=>Number((await client.execute('SELECT count(*) n FROM '+table)).rows[0].n);
 test('premium shop routes',async t=>{
  try{
@@ -171,6 +178,57 @@ test('premium shop routes',async t=>{
     await reset();const admin=await session(adminId),google=await session('google:'+owner,'google'),discord=await session(owner),p=await product(admin),a=await order(google,p.id);clock+=2000;
     const paid=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:google,data:upload()});assert.equal(paid.status,200);assert.equal((await call('shop/orders/'+a.id,{cookie:discord})).status,404);
     assert.equal((await client.execute('SELECT owner_id FROM access_keys')).rows[0].owner_id,'google:'+owner);
+  });
+  await t.test('failed slips remain admin-only and manual approval issues one owned premium key with an audit trail',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),a=await failedPurchase(admin,user);
+    assert.ok(a.slipUrl&&a.slipSha256&&a.lastError);assert.equal(a.review,null);
+    assert.equal((await call(a.slipUrl.slice(5),{cookie:admin})).status,200);
+    assert.equal((await call(a.slipUrl.slice(5),{cookie:user})).status,403);
+    const path='admin/shop/orders/'+a.id+'/approve';
+    assert.equal((await call(path,{method:'POST',data:approval(a)})).status,401);
+    assert.equal((await call(path,{method:'POST',cookie:user,data:approval(a)})).status,403);
+    assert.equal((await call(path,{method:'POST',cookie:admin,origin:'https://evil.test',data:approval(a)})).status,403);
+    const result=await call(path,{method:'POST',cookie:admin,data:approval(a)});assert.equal(result.status,200,JSON.stringify(result));
+    assert.equal(result.data.status,'paid');assert.equal(result.data.review.adminId,adminId);assert.equal(result.data.review.note,approval(a).note);
+    assert.equal(result.data.key,undefined,'admin response never exposes the purchased key');
+    const buyer=(await call('shop/orders/'+a.id,{cookie:user})).data;
+    assert.equal(buyer.status,'paid');assert.equal(buyer.key.premium,true);assert.equal(buyer.key.expiresAt,clock+30*86400000);
+    assert.equal((await client.execute('SELECT owner_id,source FROM access_keys')).rows[0].owner_id,owner);
+    assert.equal((await client.execute('SELECT source FROM access_keys')).rows[0].source,'purchase');
+    assert.equal((await call(path,{method:'POST',cookie:admin,data:approval(a)})).status,200);
+    assert.equal(await count('access_keys'),1);assert.equal(await count('purchase_reviews'),1);assert.equal(await count('payment_receipts'),1);
+    assert.equal(calls,1,'manual review does not call SlipOK again');
+  });
+  await t.test('manual review requires evidence, confirmed funds, valid time and the latest reviewed slip',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),empty=await order(user,p.id);
+    assert.equal((await call('admin/shop/orders/'+empty.id+'/approve',{method:'POST',cookie:admin,data:approval({...empty,slipSha256:'0'.repeat(64),attempts:0})})).status,409);
+    const a=await failedPurchase(admin,user),path='admin/shop/orders/'+a.id+'/approve';
+    for(const patch of [{confirmReceived:false},{bankCode:'x'},{receivingBank:'x'},{transactionRef:'x'},{note:''},
+      {transferredAt:'invalid'},{transferredAt:new Date(a.createdAt-1000).toISOString()},
+      {slipSha256:'0'.repeat(64)},{attempts:a.attempts+1}]){
+      const result=await call(path,{method:'POST',cookie:admin,data:{...approval(a),...patch}});
+      assert.ok([400,409].includes(result.status),JSON.stringify(result));
+    }
+    assert.equal(await count('access_keys'),0);assert.equal(await count('purchase_reviews'),0);
+  });
+  await t.test('concurrent manual approvals, bank-reference replay and image reuse cannot issue multiple keys',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),a=await failedPurchase(admin,user),b=await failedPurchase(admin,user,'other-image');
+    const results=await Promise.all([a,b].map(o=>call('admin/shop/orders/'+o.id+'/approve',{method:'POST',cookie:admin,data:approval(o)})));
+    assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal(await count('access_keys'),1);assert.equal(await count('purchase_reviews'),1);
+    const paid=results[0].status===200?a:b;
+    const c=await failedPurchase(admin,user,paid.id===a.id?'':'other-image');
+    const repeated=await call('admin/shop/orders/'+c.id+'/approve',{method:'POST',cookie:admin,data:{...approval(c),transactionRef:'DIFFERENT-REFERENCE'}});
+    assert.equal(repeated.status,409,'same image cannot pay a second order using a different reference');
+    assert.equal(await count('access_keys'),1);
+  });
+  await t.test('manual approval transaction failure rolls back issuance and audit and remains retryable',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),a=await failedPurchase(admin,user);
+    failBatch=true;
+    await assert.rejects(call('admin/shop/orders/'+a.id+'/approve',{method:'POST',cookie:admin,data:approval(a)}));
+    assert.equal(await count('access_keys'),0);assert.equal(await count('purchase_reviews'),0);
+    assert.equal((await call('shop/orders/'+a.id,{cookie:user})).data.status,'pending');
+    const result=await call('admin/shop/orders/'+a.id+'/approve',{method:'POST',cookie:admin,data:approval(a)});
+    assert.equal(result.status,200);assert.equal(await count('access_keys'),1);
   });
  }finally{client?.close();Date.now=realNow;globalThis.fetch=realFetch;}
 });

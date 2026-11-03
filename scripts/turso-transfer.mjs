@@ -37,7 +37,9 @@ export async function transfer(db, snapshot, action) {
   try {
     for (const file of readdirSync(new URL('../drizzle/', import.meta.url)).filter(n => n.endsWith('.sql')).sort()) {
       const sql = readFileSync(new URL('../drizzle/' + file, import.meta.url), 'utf8');
-      for (const statement of sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean)) await tx.execute(statement);
+      // Handwritten migrations can contain several SQL statements without
+      // Drizzle separators. execute() applies only the first one in libSQL.
+      await tx.executeMultiple(sql);
     }
     for (const table of tables) {
       const { columns, rows } = snapshot.tables[table];

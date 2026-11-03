@@ -38,7 +38,11 @@ with sync_playwright()as p:
     data={'products':state['products']}
    elif path=='admin/shop/settings':
     body=route.request.post_data_json;assert 'apiKey'not in body['settings'];state['config'].update({'settings':body['settings'],'revision':2});data=state['config']
-   elif path=='admin/shop/orders':data={'orders':[{**state['order'],'ownerName':'QA Buyer','ownerId':'fixture','slipUrl':None,'attempts':1,'transactionId':'004:TESTREF'}],'next':None}
+   elif path=='admin/shop/orders':data={'orders':[{**state['order'],'ownerName':'QA Buyer','ownerId':'fixture','slipUrl':'/api/admin/shop/orders/'+ORDER['id']+'/slip','slipSha256':'a'*64,'attempts':1,'transactionId':'004:TESTREF','review':state['order'].get('review')}],'next':None}
+   elif path=='admin/shop/orders/'+ORDER['id']+'/approve':
+    body=route.request.post_data_json;assert body['confirmReceived']and body['slipSha256']=='a'*64 and body['attempts']==1
+    assert body['bankCode']=='004'and body['receivingBank']=='006'and body['transactionRef']=='REVIEW12345'
+    state['order'].update({'status':'paid','lastError':None,'review':{'adminId':'123456789012345678','note':body['note'],'approvedAt':STAMP}});data=state['order']
    elif path.startswith('support/')or path.startswith('admin/support/'):data={'thread':None,'messages':[],'threads':[]}
    else:raise AssertionError('Unexpected API: '+path)
    route.fulfill(status=200,json=data)
@@ -81,6 +85,20 @@ with sync_playwright()as p:
   page.get_by_label('Payment window (minutes)',exact=True).fill('30');page.get_by_role('button',name='Save payment settings',exact=True).click()
   expect(page.get_by_text('Saved successfully',exact=True)).to_be_visible()
   page.get_by_role('button',name='Orders',exact=True).click();expect(page.locator('.shop-admin-order')).to_have_count(1)
+  state['order'].update({'status':'pending','lastError':'Bank verification temporarily unavailable','review':None})
+  page.locator('.shop-admin-orders').get_by_role('button',name='Refresh',exact=True).click()
+  page.get_by_role('button',name='Review & approve',exact=True).click()
+  review=page.locator('.shop-review-form')
+  review.get_by_label('Sending bank code',exact=True).fill('004');review.get_by_label('Receiving bank code',exact=True).fill('006')
+  review.get_by_label('Bank transaction reference',exact=True).fill('REVIEW12345')
+  review.get_by_label("Transfer date/time on slip (this device's timezone)",exact=True).fill('2026-11-03T13:30')
+  review.get_by_label('Review note',exact=True).fill('Received the full amount in the bank account')
+  expect(review.get_by_role('button',name='Approve & issue premium Key',exact=True)).to_be_disabled()
+  review.get_by_role('checkbox').check()
+  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'Manual review overflows viewport'
+  page.screenshot(path=str(OUT/('manual-review-mobile.png'if mobile else'manual-review-desktop.png')),full_page=True)
+  review.get_by_role('button',name='Approve & issue premium Key',exact=True).click()
+  expect(page.locator('.shop-review-result')).to_contain_text('Approved by admin')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'Shop admin overflows viewport'
   page.screenshot(path=str(OUT/('admin-shop-mobile.png'if mobile else'admin-shop-desktop.png')),full_page=True)
   assert not errors,errors

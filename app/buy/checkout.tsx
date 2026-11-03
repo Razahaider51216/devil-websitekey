@@ -22,9 +22,10 @@ function Payment({ id }: { id: string }) {
   useEffect(() => { let active = true;setQr("");if (order?.qrPayload) QRCode.toDataURL(order.qrPayload,{ width: 420, margin: 4, errorCorrectionLevel: "M", color: { dark: "#001621", light: "#ffffff" } }).then(value => { if (active) setQr(value); }).catch(() => setError(th ? "สร้าง QR ไม่สำเร็จ กรุณารีเฟรช" : "Could not generate the QR. Please refresh."));return () => { active = false; }; }, [order?.qrPayload,th]);
   useEffect(() => { if (!file) { setPreview("");return; }const url = URL.createObjectURL(file);setPreview(url);return () => URL.revokeObjectURL(url); }, [file]);
   useEffect(() => {
-    if (order?.status !== "verifying") return;
-    const timer = setInterval(() => { if (!request.current) load().catch(() => {}); },3000);return () => clearInterval(timer);
-  }, [order?.status,load]);
+    const verifying=order?.status === "verifying", awaitingReview=order?.status !== "paid" && !!order?.lastError;
+    if (!verifying && !awaitingReview) return;
+    const timer = setInterval(() => { if (!request.current && !document.hidden) load().catch(() => {}); },verifying ? 3000 : 10000);return () => clearInterval(timer);
+  }, [order?.status,order?.lastError,load]);
   const remaining = order ? Math.max(0,Math.ceil((order.expiresAt - (clock + offset.current)) / 1000)) : 0;
   const retry = order?.retryAt ? Math.max(0,Math.ceil((order.retryAt - clock - offset.current) / 1000)) : 0;
   useEffect(() => { if (remaining === 0 && order?.canVerify) setStage("slip"); }, [remaining,order?.canVerify]);

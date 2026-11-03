@@ -27,6 +27,8 @@ test('Turso import preserves every field; repeat import refuses; verification ca
   const source = await fixture(), db = createClient({ url: ':memory:' });
   try {
     assert.equal((await transfer(db, source, 'import')).access_keys, 2);
+    assert.equal((await db.execute("SELECT count(*) n FROM purchase_reviews")).rows[0].n,0);
+    assert.equal((await db.execute("SELECT count(*) n FROM payment_receipts")).rows[0].n,0);
     await transfer(db, source, 'verify');
     // Exercise the ORM getter shape used by existing key routes.
     const keys = sqliteTable('access_keys', { id: text('id'), hash: text('key_hash') });

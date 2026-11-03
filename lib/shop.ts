@@ -16,7 +16,6 @@ type Order = { id: string; owner_id: string; owner_name: string; client_id: stri
   verify_started_at: number | null; verify_attempts: number; retry_at: number | null; last_error: string | null;
   slip_key: string | null; slip_sha256: string | null; transaction_id: string | null; paid_at: number | null; key_id: string };
 type StoredProof = { orderId: string; slipSha256: string; paymentFingerprint: string; payment: VerifiedPayment; verifiedAt: number; imageType: string };
-type ManualReview = { adminId: string; note: string };
 type ReviewRecord = { adminId: string; note: string; approvedAt: number };
 const vars = () => env as unknown as Record<string, string>;
 // Bank delays must not force another payment. Only slip submission gets a grace
@@ -80,7 +79,7 @@ function proofMatches(value: StoredProof, order: Order, sha: string, fingerprint
     && value.payment.transferredAt >= Math.floor(order.created_at / 1000) * 1000 && value.payment.transferredAt <= order.expires_at
     && Number.isSafeInteger(value.verifiedAt) && value.verifiedAt >= order.created_at && ["image/png","image/jpeg","image/webp"].includes(value.imageType);
 }
-async function finalize(order: Order, token: string, proof: StoredProof, slipKey: string | null, review?: ManualReview) {
+async function finalize(order: Order, token: string, proof: StoredProof, slipKey: string | null) {
   const database = db(), now = Date.now(), key = await keyFor(order.key_id, vars().KEY_SECRET || "");
   const ends = expiry(now, { kind: order.duration_kind, amount: order.duration_amount });
   // Receipt ownership, key issuance and Paid are one atomic D1 transaction.
@@ -88,8 +87,9 @@ async function finalize(order: Order, token: string, proof: StoredProof, slipKey
   const statements = [
     database.prepare(`INSERT INTO payment_receipts(transaction_id,order_id,amount_satang,transferred_at,verified_at,receiving_bank,slip_sha256)
       SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM purchase_orders WHERE id=? AND status='verifying' AND verify_token=?)
+      AND NOT EXISTS(SELECT 1 FROM purchase_reviews WHERE slip_sha256=?)
       ON CONFLICT DO NOTHING`).bind(proof.payment.transactionId, order.id, proof.payment.amountSatang, proof.payment.transferredAt,
-        proof.verifiedAt, proof.payment.receivingBank, proof.slipSha256, order.id, token),
+        proof.verifiedAt, proof.payment.receivingBank, proof.slipSha256, order.id, token,proof.slipSha256),
     database.prepare(`INSERT INTO access_keys(id,flow_id,key_hash,owner_id,label,source,created_at,expires_at,revoked_at,duration_kind,duration_amount)
       SELECT ?,NULL,?,?,?,'purchase',?,?,NULL,?,? WHERE EXISTS(SELECT 1 FROM payment_receipts WHERE transaction_id=? AND order_id=?)
       AND EXISTS(SELECT 1 FROM purchase_orders WHERE id=? AND status='verifying' AND verify_token=?) ON CONFLICT(id) DO NOTHING`)
@@ -101,14 +101,35 @@ async function finalize(order: Order, token: string, proof: StoredProof, slipKey
       AND EXISTS(SELECT 1 FROM access_keys WHERE id=? AND owner_id=? AND source='purchase')`)
       .bind(now, proof.payment.transactionId, slipKey, proof.slipSha256, order.id, token, proof.payment.transactionId, order.id, order.key_id, order.owner_id),
   ];
-  if (review) statements.push(database.prepare(`INSERT INTO purchase_reviews(order_id,admin_id,transaction_id,slip_sha256,note,approved_at)
-    SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM purchase_orders WHERE id=? AND status='paid' AND transaction_id=? AND paid_at=?)
-    ON CONFLICT(order_id) DO NOTHING`).bind(order.id,review.adminId,proof.payment.transactionId,proof.slipSha256,review.note,now,
-      order.id,proof.payment.transactionId,now));
   const results = await database.batch(statements);
   if (results.some(result => !result.success)) throw new Error("Shop payment transaction failed");
   const updated = await getOrder(order.id, order.owner_id);
   if (updated.status !== "paid") throw new SlipError(409, "PAYMENT_CONFLICT", "สลิปนี้ถูกใช้กับคำสั่งซื้ออื่นแล้ว หรือรายการกำลังตรวจสอบ กรุณาติดต่อแอดมิน");
+  return updated;
+}
+async function approveManually(order:Order,token:string,adminId:string){
+  const database=db(),now=Date.now(),transactionId="admin:"+order.id;
+  const slipHash=order.slip_sha256 || await hash("manual-approval:"+order.id);
+  const key=await keyFor(order.key_id,vars().KEY_SECRET || ""),ends=expiry(now,{kind:order.duration_kind,amount:order.duration_amount});
+  // Direct admin authorization is audited separately from bank-verified receipts.
+  const results=await database.batch([
+    database.prepare(`INSERT INTO purchase_reviews(order_id,admin_id,transaction_id,slip_sha256,note,approved_at)
+      SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM purchase_orders WHERE id=? AND status='verifying' AND verify_token=?)
+      AND NOT EXISTS(SELECT 1 FROM payment_receipts WHERE slip_sha256=?)
+      AND NOT EXISTS(SELECT 1 FROM purchase_reviews WHERE slip_sha256=?) ON CONFLICT DO NOTHING`)
+      .bind(order.id,adminId,transactionId,slipHash,"Approved directly by administrator",now,order.id,token,slipHash,slipHash),
+    database.prepare(`INSERT INTO access_keys(id,flow_id,key_hash,owner_id,label,source,created_at,expires_at,revoked_at,duration_kind,duration_amount)
+      SELECT ?,NULL,?,?,?,'purchase',?,?,NULL,?,? WHERE EXISTS(SELECT 1 FROM purchase_reviews WHERE order_id=?)
+      AND EXISTS(SELECT 1 FROM purchase_orders WHERE id=? AND status='verifying' AND verify_token=?) ON CONFLICT(id) DO NOTHING`)
+      .bind(order.key_id,await hash(key),order.owner_id,order.product_name,now,ends,order.duration_kind,order.duration_amount,order.id,order.id,token),
+    database.prepare(`UPDATE purchase_orders SET status='paid',paid_at=?,transaction_id=?,last_error=NULL,retry_at=NULL,verify_token=NULL
+      WHERE id=? AND status='verifying' AND verify_token=? AND EXISTS(SELECT 1 FROM purchase_reviews WHERE order_id=?)
+      AND EXISTS(SELECT 1 FROM access_keys WHERE id=? AND owner_id=? AND source='purchase')`)
+      .bind(now,transactionId,order.id,token,order.id,order.key_id,order.owner_id),
+  ]);
+  if(results.some(result=>!result.success))throw new Error("Admin approval transaction failed");
+  const updated=await getOrder(order.id,order.owner_id);
+  if(updated.status!=="paid")throw new RequestError(409,"รายการนี้ถูกดำเนินการแล้ว หรือสลิปถูกใช้กับคำสั่งซื้ออื่น กรุณารีเฟรช");
   return updated;
 }
 async function verifyOrder(req: Request, order: Order) {
@@ -222,32 +243,15 @@ async function adminRoutes(req: Request, path: string[], deps: Dependencies) {
     const order=await getOrder(path[3]);
     if (order.status === "paid") return reply(await orderView(order,true));
     const input=await readJson(req);
-    if (input.confirmReceived !== true || typeof input.bankCode !== "string" || !/^\d{3}$/.test(input.bankCode)
-        || typeof input.receivingBank !== "string" || !/^\d{3}$/.test(input.receivingBank)
-        || typeof input.transactionRef !== "string" || !/^[A-Za-z0-9_-]{5,100}$/.test(input.transactionRef)
-        || typeof input.note !== "string" || input.note.trim().length < 5 || input.note.length > 1000
-        || typeof input.transferredAt !== "string" || !/(?:Z|[+-]\d\d:\d\d)$/.test(input.transferredAt))
-      throw new RequestError(400,"Confirm receipt of funds and enter the sending bank code, transaction reference, transfer time and review note");
-    const transferredAt=Date.parse(input.transferredAt);
-    if (!Number.isFinite(transferredAt) || transferredAt < Math.floor(order.created_at/1000)*1000 || transferredAt > order.expires_at || transferredAt > now+60000)
-      throw new RequestError(400,"Transfer time must fall within the original order payment window");
     if (input.slipSha256 !== order.slip_sha256 || input.attempts !== order.verify_attempts)
       throw new RequestError(409,"The submitted slip changed. Refresh and review the latest image");
-    const file=order.slip_key ? await bucket().get(order.slip_key) : null;
-    if (order.slip_key && !file) throw new RequestError(409,"Submitted slip image is unavailable");
-    const transactionId=input.bankCode+":"+input.transactionRef,token=crypto.randomUUID();
-    // The original invoice may have no uploaded image yet. This order-specific
-    // marker identifies manual approval; it is not stored or served as a slip.
-    const receiptHash=order.slip_sha256 || await hash("manual-approval:"+order.id);
+    const token=crypto.randomUUID();
     const claim=await database.prepare(`UPDATE purchase_orders SET status='verifying',verify_token=?,verify_started_at=?
       WHERE id=? AND status=? AND verify_token IS ? AND slip_sha256 IS ? AND verify_attempts=? RETURNING id`)
       .bind(token,now,order.id,order.status,order.verify_token,input.slipSha256,input.attempts).first();
     if (!claim) throw new RequestError(409,"Order changed or is already being reviewed. Refresh before retrying");
     try {
-      const proof: StoredProof={orderId:order.id,slipSha256:receiptHash,paymentFingerprint:await hash(order.payment_config),
-        verifiedAt:now,imageType:file?.httpMetadata?.contentType || "application/octet-stream",
-        payment:{transactionId,amountSatang:order.price_satang,transferredAt,receivingBank:input.receivingBank}};
-      const paid=await finalize(order,token,proof,order.slip_key,{adminId:actor.id,note:input.note.trim()});
+      const paid=await approveManually(order,token,actor.id);
       return reply(await orderView(paid,true));
     } catch(error) {
       await database.prepare("UPDATE purchase_orders SET status='pending',verify_token=NULL WHERE id=? AND verify_token=? AND status='verifying'")

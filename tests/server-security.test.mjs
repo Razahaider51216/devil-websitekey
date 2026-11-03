@@ -282,7 +282,7 @@ test('server security integration',async t=>{
   });
   await t.test('supported games seed, Discord-admin CRUD, safe links, visibility and concurrent editing',async()=>{
     await reset();const guest=new Browser(),owner=new Browser(),member=new Browser();
-    const seeded=await guest.call('games');assert.equal(seeded.status,200);assert.equal(seeded.data.games.length,14);
+    const seeded=await guest.call('games');assert.equal(seeded.status,200);assert.equal(seeded.data.games.length,15);
     assert.ok(seeded.data.games.every(game=>game.gameUrl.startsWith('https://www.roblox.com/games/')&&game.imageUrl.startsWith('/games/')));
     assert.equal((await guest.call('admin/games')).status,401);
     await member.login('223456789012345678');assert.equal((await member.call('admin/games')).status,403);
@@ -295,14 +295,14 @@ test('server security integration',async t=>{
     }
     const added=await owner.call('admin/games','POST',{revision:catalog.revision,game:draft});assert.equal(added.status,200);
     const game=added.data.games.find(g=>g.name==='Added game');assert.equal(game.gameUrl,'https://www.roblox.com/games/12345');
-    assert.equal((await guest.call('games')).data.games.length,15);
+    assert.equal((await guest.call('games')).data.games.length,16);
     assert.equal((await owner.call('admin/games/'+game.id,'PATCH',{revision:catalog.revision,game:{...draft,name:'Stale edit'}})).status,409);
     const contenders=await Promise.all(['First edit','Second edit'].map(name=>owner.call('admin/games/'+game.id,'PATCH',{revision:added.data.revision,game:{...draft,name,enabled:false}})));
     assert.deepEqual(contenders.map(r=>r.status).sort(),[200,409]);
-    assert.equal((await guest.call('games')).data.games.length,14,'hidden game must not be public');
-    catalog=(await owner.call('admin/games')).data;assert.equal(catalog.games.length,15,'hidden game remains editable');
+    assert.equal((await guest.call('games')).data.games.length,15,'hidden game must not be public');
+    catalog=(await owner.call('admin/games')).data;assert.equal(catalog.games.length,16,'hidden game remains editable');
     assert.equal((await owner.call('admin/games/'+game.id,'DELETE',{revision:catalog.revision})).status,200);
-    assert.equal((await owner.call('admin/games')).data.games.length,14);
+    assert.equal((await owner.call('admin/games')).data.games.length,15);
     assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,0,'game edits must not change key data');
   });
   async function readySix(b) {
@@ -606,7 +606,8 @@ test('server security integration',async t=>{
     const premiumFile=ref+'/premium/break-x2.lua';
     const throwFoodFile=ref+'/throw-food-for-animals.lua';
     const petRideFile=ref+'/steal-a-pet-and-ride-it.lua';
-    const manifest={release,root:file,maps:14,files:{[file]:{sha256:sha(source),bytes:source.length,checksum},[petRideFile]:{sha256:sha(source),bytes:source.length,checksum},[throwFoodFile]:{sha256:sha(source),bytes:source.length,checksum},[premiumFile]:{sha256:sha(source),bytes:source.length,checksum,entitlement:'break-x2'}}};
+    const poolFile=ref+'/pool.lua';
+    const manifest={release,root:file,maps:15,files:{[file]:{sha256:sha(source),bytes:source.length,checksum},[poolFile]:{sha256:sha(source),bytes:source.length,checksum},[petRideFile]:{sha256:sha(source),bytes:source.length,checksum},[throwFoodFile]:{sha256:sha(source),bytes:source.length,checksum},[premiumFile]:{sha256:sha(source),bytes:source.length,checksum,entitlement:'break-x2'}}};
     const manifestBytes=new TextEncoder().encode(JSON.stringify(manifest));const pointer={release,sha256:sha(manifestBytes)};
     data.set(manifestKey(release),manifestBytes);
     const created=(await b.call('admin/keys','POST',{kind:'permanent',amount:0,label:'runtime'})).data;
@@ -641,6 +642,18 @@ test('server security integration',async t=>{
       try{return await handle(request,path);}catch(e){return Response.json({error:e.message},{status:e.status||e.code||500});}
     }
     const response=await fetchFile(result.data.entry);assert.equal(response.status,200);assert.equal(await response.text(),'return "unchanged runtime"');
+    assert.equal((await fetchFile(result.data.prefix+poolFile)).status,200,'admin-created Key can load Pool');
+    assert.equal((await fetchFile(ordinary.data.prefix+poolFile)).status,200,'Free Key can load Pool');
+    assert.equal((await fetchFile(result.data.prefix+poolFile+'tampered')).status,404);
+    const poolLogin={...login,gameId:10767330648,placeId:107430170196919};
+    const {recordGameLaunch}=await import('../lib/game-usage.ts');
+    await recordGameLaunch(poolLogin,await hash(created.key),14);
+    assert.equal((await b.call('games')).data.games.find(g=>g.id==='crazy-8-ball').launches,0,'older main releases do not count Pool launches');
+    assert.equal((await b.call('runtime/session','POST',{...poolLogin,key:'invalid'})).status,403);
+    assert.equal((await b.call('runtime/session','POST',{...poolLogin,hwid:'wrong-pool-device'})).status,403);
+    assert.equal((await b.call('runtime/session','POST',poolLogin)).status,200);
+    assert.equal((await b.call('runtime/session','POST',{...poolLogin,key:ordinaryKey})).status,200);
+    assert.equal((await b.call('games')).data.games.find(g=>g.id==='crazy-8-ball').launches,2);
     assert.equal((await fetchFile(result.data.prefix+petRideFile)).status,200,'admin-created Key can load Pet Ride');
     assert.equal((await fetchFile(ordinary.data.prefix+petRideFile)).status,200,'Free Key can load Pet Ride');
     assert.equal((await fetchFile(result.data.premiumEntry)).status,200,'active admin-created key can download premium module');

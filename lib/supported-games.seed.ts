@@ -130,4 +130,9 @@ export const defaultGames = [
     imageUrl: "/games/steal-a-pet-and-ride-it.png", gameUrl: "https://www.roblox.com/games/95168737547508",
     enabled: true, sortOrder: 13, universeId: 10769315427, placeId: 95168737547508,
   },
+  {
+    id: "crazy-8-ball", name: "CRAZY 8 Ball",
+    imageUrl: "/games/crazy-8-ball.png", gameUrl: "https://www.roblox.com/games/107430170196919",
+    enabled: true, sortOrder: 14, universeId: 10767330648, placeId: 107430170196919,
+  },
 ];

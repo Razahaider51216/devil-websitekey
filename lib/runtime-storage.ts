@@ -30,7 +30,7 @@ export function validateManifest(value: unknown): RuntimeManifest {
   if (!value || typeof value !== "object") fail(503, "Runtime manifest is invalid");
   const m = value as RuntimeManifest;
   releaseName(m.release);
-  if (![12, 13, 14].includes(m.maps) || !m.files || typeof m.files !== "object" || Array.isArray(m.files)) fail(503, "Runtime manifest is incomplete");
+  if (![12, 13, 14, 15].includes(m.maps) || !m.files || typeof m.files !== "object" || Array.isArray(m.files)) fail(503, "Runtime manifest is incomplete");
   const rows = Object.entries(m.files);
   if (!rows.length || rows.length > 150 || !Object.hasOwn(m.files, m.root)) fail(503, "Runtime entry is missing");
   for (const [name, file] of rows) {

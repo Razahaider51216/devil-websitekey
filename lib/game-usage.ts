@@ -21,7 +21,7 @@ function knownGame(gameId: unknown, placeId: unknown) {
 // These are authenticated launch counts, not online players or play duration.
 export async function recordGameLaunch(input: Record<string, unknown>, keyHash: string, maps: number) {
   const game = knownGame(input.gameId, input.placeId);
-  if (!game || game.id === "steal-a-pet-and-ride-it" && maps < 14 || game.id === "throw-food-for-animals" && maps < 13) return;
+  if (!game || game.id === "crazy-8-ball" && maps < 15 || game.id === "steal-a-pet-and-ride-it" && maps < 14 || game.id === "throw-food-for-animals" && maps < 13) return;
   const now = Date.now(), bucket = Math.floor(now / windowMs), db = getDb();
   const id = "game-launch:" + await hash(`${keyHash}:${game.universeId}:${bucket}`);
   const claimed = await db.insert(limits).values({ id, hits: 1, expiresAt: (bucket + 2) * windowMs })

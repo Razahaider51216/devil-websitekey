@@ -47,7 +47,11 @@ test('SlipOK is called only at the fixed origin with server secret, exact amount
     assert.equal(options.body.get('amount'),'123.45');assert.equal(options.body.get('log'),'true');assert.ok(options.body.get('files') instanceof File);
     return Response.json({success:true,data:valid});
   });assert.deepEqual(success,valid);
-  for(const code of [1001,1002,1003,1004,1007,1009,1010,1011,1012,1013,1014])await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({code,data:valid},{status:400})));
+  for(const code of [1001,1002,1003,1004,1007,1009,1010,1011,1013,1014])await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({code,data:valid},{status:400})));
+  const recovered=await checkSlip(file,12345,'123','server-only',async()=>Response.json({code:1012,data:valid},{status:400}));
+  assert.deepEqual(recovered,valid);assert.equal(verifyPaymentData(recovered,order,now).transactionId,'004:REF1234567');
+  for(const data of [undefined,{},null,{...valid,success:false}])await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({code:1012,data},{status:400})),e=>e.code==='SLIP_DUPLICATE');
+  await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({code:1009},{status:400})),e=>e.retryAfter===900);
   await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>{throw Error('private secret should not be reflected');}),e=>!e.message.includes('private secret'));
   await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({success:true,data:valid},{status:302,headers:{Location:'https://untrusted.test/'}})),
     e=>e.status===503&&e.code==='SLIP_UNAVAILABLE'&&e.retryAfter===30);

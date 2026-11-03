@@ -17,6 +17,9 @@ type Order = { id: string; owner_id: string; owner_name: string; client_id: stri
   slip_key: string | null; slip_sha256: string | null; transaction_id: string | null; paid_at: number | null; key_id: string };
 type StoredProof = { orderId: string; slipSha256: string; paymentFingerprint: string; payment: VerifiedPayment; verifiedAt: number; imageType: string };
 const vars = () => env as unknown as Record<string, string>;
+// Bank delays must not force another payment. Only slip submission gets a grace
+// period; verifyPaymentData still requires payment within the original invoice.
+const slipGraceMs = 24 * 60 * 60_000;
 function db() { if (!env.DB) throw new RequestError(503, "ฐานข้อมูลร้านค้ายังไม่พร้อม");return env.DB; }
 function bucket() {
   const value = (env as unknown as { SCRIPT_FILES?: R2Bucket }).SCRIPT_FILES;
@@ -55,7 +58,8 @@ async function orderView(order: Order, admin = false) {
   const view = { id: order.id, productName: order.product_name, priceSatang: order.price_satang,
     durationKind: order.duration_kind, durationAmount: order.duration_amount, createdAt: order.created_at, expiresAt: order.expires_at,
     status: order.status === "paid" ? "paid" : order.status === "verifying" && (order.verify_started_at || 0) > now - 120_000 ? "verifying" : order.expires_at <= now ? "expired" : "pending",
-    paidAt: order.paid_at, lastError: order.last_error, retryAt: order.retry_at, serverNow: now };
+    paidAt: order.paid_at, lastError: order.last_error, retryAt: order.retry_at, serverNow: now,
+    canVerify: order.status !== "paid" && now < order.expires_at + slipGraceMs && order.verify_attempts < 12 };
   if (admin) return { ...view, ownerName: order.owner_name, ownerId: order.owner_id, attempts: order.verify_attempts,
     transactionId: order.transaction_id, keyId: order.status === "paid" ? order.key_id : null,
     slipUrl: order.slip_key ? `/api/admin/shop/orders/${order.id}/slip` : null };
@@ -101,7 +105,7 @@ async function finalize(order: Order, token: string, proof: StoredProof, slipKey
 async function verifyOrder(req: Request, order: Order) {
   if (order.status === "paid") return reply(await orderView(order));
   const now = Date.now();
-  if (order.expires_at <= now) throw new RequestError(409, "คำสั่งซื้อหมดเวลาแล้ว หากโอนแล้วกรุณาแจ้งเลขคำสั่งซื้อกับแอดมิน ไม่ต้องโอนซ้ำ");
+  if (order.expires_at + slipGraceMs <= now) throw new RequestError(409, "คำสั่งซื้อหมดเวลาตรวจสลิปแล้ว หากโอนแล้วกรุณาแจ้งเลขคำสั่งซื้อกับแอดมิน ไม่ต้องโอนซ้ำ");
   if (order.retry_at && order.retry_at > now) throw new SlipError(429, "PAYMENT_RETRY", "กรุณารอตามเวลาที่แสดงแล้วส่งสลิปเดิมอีกครั้ง ไม่ต้องโอนซ้ำ", Math.ceil((order.retry_at - now) / 1000));
   if (order.verify_attempts >= 12) throw new RequestError(429, "ตรวจสลิปครบจำนวนครั้งแล้ว กรุณาติดต่อแอดมินพร้อมเลขคำสั่งซื้อ");
   const payment = JSON.parse(order.payment_config) as PaymentConfig;
@@ -111,7 +115,7 @@ async function verifyOrder(req: Request, order: Order) {
   const claim = await db().prepare(`UPDATE purchase_orders SET status='verifying',verify_token=?,verify_started_at=?,verify_attempts=verify_attempts+1,last_error=NULL
     WHERE id=? AND owner_id=? AND status!='paid' AND expires_at>? AND(verify_token IS NULL OR verify_started_at<?)
     AND(retry_at IS NULL OR retry_at<=?) AND verify_attempts<12 RETURNING id`)
-    .bind(token, now, order.id, order.owner_id, now, now - 120_000, now).first();
+    .bind(token, now, order.id, order.owner_id, now - slipGraceMs, now - 120_000, now).first();
   if (!claim) {
     const updated = await getOrder(order.id, order.owner_id);
     if (updated.status === "paid") return reply(await orderView(updated));
@@ -137,6 +141,10 @@ async function verifyOrder(req: Request, order: Order) {
     const paid = await finalize(order, token, proof, prefix + ".image");
     return reply(await orderView(paid));
   } catch (error) {
+    // Diagnostics exclude the slip image, bank details, API secret and key.
+    console.warn("Shop slip verification failed", { orderId: order.id,
+      code: error instanceof SlipError ? error.code : error instanceof RequestError ? "PAYMENT_VALIDATION" : "PAYMENT_SAVE",
+      status: error instanceof RequestError ? error.status : 503 });
     const message = error instanceof RequestError ? error.message : "บันทึกรายการไม่สำเร็จ กรุณาส่งสลิปเดิมอีกครั้ง ห้ามโอนซ้ำ";
     const retryAfter = error instanceof SlipError ? error.retryAfter : error instanceof RequestError ? 0 : 30;
     await db().prepare(`UPDATE purchase_orders SET status='pending',verify_token=NULL,last_error=?,retry_at=? WHERE id=? AND verify_token=? AND status='verifying'`)

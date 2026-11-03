@@ -116,8 +116,45 @@ test('premium shop routes',async t=>{
       const result=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});assert.ok(result.status>=400,JSON.stringify(result));assert.equal(await count('access_keys'),0);assert.equal(await count('payment_receipts'),0);
       assert.equal((await call('shop/orders/'+a.id,{cookie:user})).data.status,'pending');
     }
-    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock=a.expiresAt+1;
-    assert.equal((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()})).status,409);assert.equal(calls,0);
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock=a.expiresAt+24*3600000;
+    assert.equal((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:await session(),data:upload()})).status,409);assert.equal(calls,0);
+  });
+  await t.test('bank outage followed by logged duplicate recovers one key, including after the transfer window closes',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock+=2000;
+    const verified={...proof};proof={code:1009};
+    const failed=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});
+    assert.equal(failed.status,503);assert.equal(failed.data.code,'SLIP_BANK_UNAVAILABLE');assert.equal(await count('access_keys'),0);
+    assert.equal((await call('shop/orders/'+a.id,{cookie:user})).data.retryAt,clock+900000);
+    proof={code:1012,data:verified};clock=a.expiresAt+1000;
+    const view=(await call('shop/orders/'+a.id,{cookie:user})).data;
+    assert.equal(view.status,'expired');assert.equal(view.canVerify,true);assert.equal(view.qrPayload,null);
+    const recovered=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});
+    assert.equal(recovered.status,200,JSON.stringify(recovered));assert.equal(recovered.data.status,'paid');
+    assert.equal(await count('access_keys'),1);assert.equal(await count('payment_receipts'),1);
+    assert.equal((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()})).data.key.key,recovered.data.key.key);
+    assert.equal(calls,2);
+  });
+  await t.test('logged duplicate data is fully checked and cannot pay two owners or two concurrent orders',async()=>{
+    for(const change of [{success:false},{amount:99.91},{receiver:{displayName:'Another Person'}},{transTimestamp:'invalid'},
+      {transTimestamp:new Date(Date.parse('2026-11-03T06:30:00Z')+21*60000).toISOString()}]){
+      await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock+=2000;
+      proof={code:1012,data:{...proof,...change}};
+      assert.ok((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()})).status>=400);
+      assert.equal(await count('access_keys'),0);assert.equal(await count('payment_receipts'),0);
+    }
+    await reset();const admin=await session(adminId),user=await session(),stranger=await session(other),p=await product(admin);
+    const a=await order(user,p.id),b=await order(stranger,p.id);clock+=2000;providerDelay=20;proof={code:1012,data:proof};
+    const results=await Promise.all([
+      call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()}),
+      call('shop/orders/'+b.id+'/verify',{method:'POST',cookie:stranger,data:upload('different-image')})]);
+    assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+    assert.equal(await count('access_keys'),1);assert.equal(await count('payment_receipts'),1);
+  });
+  await t.test('late receipt submission never extends the allowed bank transfer time',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);
+    clock=a.expiresAt+1000;proof={...proof,transTimestamp:new Date(clock).toISOString()};
+    assert.equal((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()})).status,400);
+    assert.equal(await count('access_keys'),0);assert.equal(await count('payment_receipts'),0);
   });
   await t.test('concurrent retries call SlipOK once and a bank transaction can never pay two orders',async()=>{
     await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id),b=await order(user,p.id);clock+=2000;providerDelay=30;

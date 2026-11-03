@@ -18,6 +18,11 @@ export async function checkSlip(file: File, amountSatang: number, branchId: stri
   try { result = await response.json(); } catch { throw new SlipError(503, "SLIP_UNAVAILABLE", "ระบบตรวจสลิปไม่พร้อม กรุณาลองใหม่โดยไม่ต้องโอนซ้ำ", 30); }
   if (response.ok && result.success === true) return result.data;
   const code = Number(result.code);
+  // SlipOK returns the original bank-verified data with 1012. The caller must
+  // still validate the invoice and atomically claim its transaction reference.
+  // A duplicate code alone (or an incomplete/failed bank result) is never proof.
+  if (response.status === 400 && code === 1012 && result.data && typeof result.data === "object"
+      && (result.data as { success?: unknown }).success === true) return result.data;
   if (code === 1012) throw new SlipError(409, "SLIP_DUPLICATE", "สลิปนี้ถูกตรวจสอบแล้ว หากยังไม่ได้รับคีย์ กรุณาแจ้งเลขคำสั่งซื้อกับแอดมิน");
   if (code === 1013) throw new SlipError(400, "SLIP_AMOUNT", "ยอดโอนไม่ตรงกับคำสั่งซื้อ");
   if (code === 1014) throw new SlipError(400, "SLIP_RECEIVER", "บัญชีผู้รับไม่ตรงกับร้าน");
@@ -26,7 +31,8 @@ export async function checkSlip(file: File, amountSatang: number, branchId: stri
     const minutes = Math.max(1, Math.min(15, Number(data?.delay) || 5));
     throw new SlipError(409, "SLIP_BANK_DELAY", `ธนาคารกำลังประมวลผล กรุณารอ ${minutes} นาทีแล้วส่งสลิปเดิมอีกครั้ง ไม่ต้องโอนซ้ำ`, Math.ceil(minutes * 60));
   }
-  if (code === 1009 || response.status >= 500) throw new SlipError(503, "SLIP_BANK_UNAVAILABLE", "ธนาคารไม่พร้อมตรวจสอบ กรุณาลองใหม่ภายหลัง ไม่ต้องโอนซ้ำ", 60);
+  if (code === 1009) throw new SlipError(503, "SLIP_BANK_UNAVAILABLE", "ธนาคารไม่พร้อมตรวจสอบ กรุณารอ 15 นาทีแล้วส่งสลิปเดิมอีกครั้ง ไม่ต้องโอนซ้ำ", 15 * 60);
+  if (response.status >= 500) throw new SlipError(503, "SLIP_UNAVAILABLE", "ระบบตรวจสลิปไม่พร้อม กรุณาลองใหม่ภายหลัง ไม่ต้องโอนซ้ำ", 60);
   if ([1001,1002,1003,1004].includes(code)) throw new SlipError(503, "SLIP_CONFIG", "ระบบตรวจสลิปของร้านยังไม่พร้อม กรุณาติดต่อแอดมิน");
   throw new SlipError(400, "SLIP_INVALID", "ตรวจสอบสลิปไม่สำเร็จ กรุณาใช้รูปสลิปโอนเงินจริงที่เห็น QR ชัดเจน");
 }

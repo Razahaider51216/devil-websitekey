@@ -58,3 +58,13 @@ test('workerd rejects provider redirects and failures without approving or forwa
   const failed = await worker({ status: 503, body: { code: 1009 } });
   assert.equal(failed.status, 503);assert.equal(failed.data.code, 'SLIP_BANK_UNAVAILABLE');
 });
+
+test('workerd preserves verified bank data on a duplicate reply but rejects a duplicate without proof', async () => {
+  const bank = { success: true, transRef: 'BANK-REFERENCE', amount: 99.90 };
+  const recovered = await worker({ status: 400, body: { code: 1012, data: bank } });
+  assert.equal(recovered.status, 200);assert.deepEqual(recovered.data.data, bank);
+  for (const data of [undefined, {}, { success: false }]) {
+    const rejected = await worker({ status: 400, body: { code: 1012, data } });
+    assert.equal(rejected.status, 409);assert.equal(rejected.data.code, 'SLIP_DUPLICATE');
+  }
+});

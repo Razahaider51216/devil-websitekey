@@ -1,6 +1,6 @@
 export type ShopProduct = { id: string; name: string; description: string; priceSatang: number; durationKind: "days" | "months" | "permanent"; durationAmount: number; enabled: boolean; sortOrder: number; updatedAt: number };
 export type ShopOrder = { id: string; productName: string; priceSatang: number; durationKind: "days" | "months" | "permanent"; durationAmount: number;
-  status: string; createdAt: number; expiresAt: number; serverNow: number; paidAt: number | null; lastError: string | null; retryAt: number | null;
+  status: string; createdAt: number; expiresAt: number; serverNow: number; paidAt: number | null; lastError: string | null; retryAt: number | null; canVerify: boolean;
   payment: { promptpayId: string; receiverName: string }; qrPayload: string | null; key: { key: string; createdAt: number; expiresAt: number | null; status: string; premium: boolean } | null };
 export function money(satang: number) { return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: satang % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(satang / 100); }
 export function duration(item: { durationKind: string; durationAmount: number }, th: boolean) { return item.durationKind === "permanent" ? th ? "ถาวร" : "Lifetime" : `${item.durationAmount} ${item.durationKind === "days" ? th ? "วัน" : "days" : th ? "เดือน" : "months"}`; }

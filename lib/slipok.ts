@@ -9,8 +9,11 @@ export async function checkSlip(file: File, amountSatang: number, branchId: stri
   const form = new FormData();form.set("files", file);form.set("log", "true");form.set("amount", (amountSatang / 100).toFixed(2));
   let response: Response;
   try { response = await fetcher(`https://api.slipok.com/api/line/apikey/${branchId}`, {
-    method: "POST", headers: { "x-authorization": apiKey, "User-Agent": "DEVIL-HUB/1.1", "Accept": "application/json" }, body: form, signal: AbortSignal.timeout(30_000), redirect: "error",
+    // Workers supports manual/follow only. Reject redirects below rather than
+    // forwarding the API key and uploaded payment slip to another location.
+    method: "POST", headers: { "x-authorization": apiKey, "User-Agent": "DEVIL-HUB/1.1", "Accept": "application/json" }, body: form, signal: AbortSignal.timeout(30_000), redirect: "manual",
   }); } catch { throw new SlipError(503, "SLIP_UNAVAILABLE", "ติดต่อระบบตรวจสลิปไม่สำเร็จ กรุณาลองใหม่โดยไม่ต้องโอนซ้ำ", 30); }
+  if (response.status >= 300 && response.status < 400) throw new SlipError(503, "SLIP_UNAVAILABLE", "ระบบตรวจสลิปไม่พร้อม กรุณาลองใหม่โดยไม่ต้องโอนซ้ำ", 30);
   let result: { success?: unknown; data?: unknown; code?: unknown };
   try { result = await response.json(); } catch { throw new SlipError(503, "SLIP_UNAVAILABLE", "ระบบตรวจสลิปไม่พร้อม กรุณาลองใหม่โดยไม่ต้องโอนซ้ำ", 30); }
   if (response.ok && result.success === true) return result.data;

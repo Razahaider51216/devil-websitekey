@@ -43,12 +43,14 @@ test('bank result must match amount, THB, recipient and this order transfer wind
 test('SlipOK is called only at the fixed origin with server secret, exact amount and log=true; errors never approve',async()=>{
   const file=new File([new Uint8Array([255,216,255,217])],'slip.jpg',{type:'image/jpeg'});
   const success=await checkSlip(file,12345,'123','server-only',async(url,options)=>{
-    assert.equal(url,'https://api.slipok.com/api/line/apikey/123');assert.equal(options.headers['x-authorization'],'server-only');assert.equal(options.redirect,'error');
+    assert.equal(url,'https://api.slipok.com/api/line/apikey/123');assert.equal(options.headers['x-authorization'],'server-only');assert.equal(options.redirect,'manual');
     assert.equal(options.body.get('amount'),'123.45');assert.equal(options.body.get('log'),'true');assert.ok(options.body.get('files') instanceof File);
     return Response.json({success:true,data:valid});
   });assert.deepEqual(success,valid);
   for(const code of [1001,1002,1003,1004,1007,1009,1010,1011,1012,1013,1014])await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({code,data:valid},{status:400})));
   await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>{throw Error('private secret should not be reflected');}),e=>!e.message.includes('private secret'));
+  await assert.rejects(checkSlip(file,12345,'123','server-only',async()=>Response.json({success:true,data:valid},{status:302,headers:{Location:'https://untrusted.test/'}})),
+    e=>e.status===503&&e.code==='SLIP_UNAVAILABLE'&&e.retryAfter===30);
 });
 test('slip uploads enforce bounded images and reject HTML/SVG, repeated fields and oversized requests',async()=>{
   const request=(files)=>{const form=new FormData();for(const file of files)form.append('slip',file);return new Request('https://example.test',{method:'POST',body:form});};

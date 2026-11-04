@@ -304,7 +304,23 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
       binding = await db.select().from(keyDevices).where(eq(keyDevices.keyId, row.id)).get();
     }
     const matched = binding?.hwidHash === hwidHash;
-    return json({ valid: matched, status: matched ? "active" : "hwid_mismatch", expiresAt: row.expiresAt });
+    if (!matched) return json({ valid: false, status: "hwid_mismatch", expiresAt: row.expiresAt });
+    const upgradedAt = Date.now();
+    // Retire only Free keys actually bound to this device. A premium key must
+    // already be active AND successfully bound; owning/guessing one is not enough.
+    // Both Free and Premium validation run this conditional update, so a new
+    // Free key cannot replace an already activated Premium key on the device.
+    await db.run(sql`UPDATE access_keys SET expires_at=${upgradedAt}
+      WHERE source='steps' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>${upgradedAt})
+      AND id IN (SELECT key_id FROM key_devices WHERE hwid_hash=${hwidHash})
+      AND EXISTS(SELECT 1 FROM access_keys premium JOIN key_devices device ON device.key_id=premium.id
+        WHERE device.hwid_hash=${hwidHash} AND premium.source IN ('admin','purchase')
+        AND premium.revoked_at IS NULL AND (premium.expires_at IS NULL OR premium.expires_at>${upgradedAt}))`);
+    const current = await db.select().from(keys).where(eq(keys.id, row.id)).get();
+    const currentStatus = current ? status(current, Date.now()) : "invalid";
+    const premiumRequired = row.source === "steps" && currentStatus === "expired" && (row.expiresAt === null || row.expiresAt > upgradedAt);
+    return json({ valid: currentStatus === "active", status: currentStatus, expiresAt: current?.expiresAt ?? null,
+      ...(premiumRequired ? { premiumRequired: true, message: "คีย์ฟรีหมดอายุเนื่องจากเครื่องนี้เปิดใช้คีย์พรีเมียมแล้ว กรุณาใส่คีย์พรีเมียมแทน" } : {}) });
   }
   if (route.startsWith("admin")) {
     await admin(req);

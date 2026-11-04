@@ -395,6 +395,40 @@ test('server security integration',async t=>{
     clock+=1000;assert.equal((await a.call('validate','POST',{key,hwid:'device-aaaaaaaa'})).data.status,'expired');
     env.TURNSTILE_SECRET_KEY='';assert.equal((await a.call('flow')).status,503);
   });
+  await t.test('activated premium expires all Free keys on its HWID, rejects new Free keys and preserves other devices',async()=>{
+    for(const premiumSource of ['admin','purchase']){
+      await reset();const b=new Browser();
+      async function seed(source,device,opts={}){
+        const id=crypto.randomUUID(),key=await keyFor(id,env.KEY_SECRET);
+        await globalThis.__securityDb.insert(schema.keys).values({id,keyHash:await hash(key),label:'upgrade fixture',source,
+          createdAt:clock,expiresAt:opts.expiresAt??clock+86400000,revokedAt:opts.revokedAt??null,durationKind:'days',durationAmount:1});
+        if(device)await client.execute({sql:'INSERT INTO key_devices(key_id,hwid_hash,bound_at)VALUES(?,?,?)',args:[id,await hash('DEVIL-HWID:v1:'+device),clock]});
+        return {id,key};
+      }
+      const hwid='upgrade-device-one',other='upgrade-device-two';
+      const free1=await seed('steps',hwid),free2=await seed('steps',hwid),unrelated=await seed('steps',other);
+      const premium=await seed(premiumSource);
+      assert.equal((await b.call('validate','POST',{key:free1.key,hwid})).data.valid,true,'unbound premium expired Free');
+      assert.equal((await b.call('validate','POST',{key:premium.key,hwid})).data.valid,true);
+      for(const free of [free1,free2])assert.equal((await b.call('validate','POST',{key:free.key,hwid})).data.status,'expired');
+      assert.equal((await b.call('validate','POST',{key:unrelated.key,hwid:other})).data.valid,true);
+      const newFree=await seed('steps');const denied=await b.call('validate','POST',{key:newFree.key,hwid});
+      assert.equal(denied.data.valid,false);assert.equal(denied.data.premiumRequired,true);assert.equal(denied.data.status,'expired');
+      assert.ok(!JSON.stringify(denied.data).includes(premium.key),'premium secret leaked');
+      assert.equal((await b.call('validate','POST',{key:premium.key,hwid:other})).data.status,'hwid_mismatch');
+      assert.equal((await b.call('validate','POST',{key:premium.key,hwid})).data.valid,true);
+    }
+  });
+  await t.test('expired, revoked or mismatched premium never expires another device Free key',async()=>{
+    await reset();const b=new Browser(),hwid='free-device-fixture';
+    for(const [i,expiresAt,revokedAt,device]of [[1,clock-1,null,hwid],[2,clock+86400000,clock,hwid],[3,clock+86400000,null,'other-device-fixture']]){
+      const id=crypto.randomUUID();await globalThis.__securityDb.insert(schema.keys).values({id,keyHash:await hash('premium-fixture-'+i),label:'fixture',source:'admin',createdAt:clock-5000,expiresAt,revokedAt,durationKind:'days',durationAmount:1});
+      await client.execute({sql:'INSERT INTO key_devices(key_id,hwid_hash,bound_at)VALUES(?,?,?)',args:[id,await hash('DEVIL-HWID:v1:'+device),clock]});
+    }
+    const id=crypto.randomUUID(),key=await keyFor(id,env.KEY_SECRET);
+    await globalThis.__securityDb.insert(schema.keys).values({id,keyHash:await hash(key),label:'Free',source:'steps',createdAt:clock,expiresAt:clock+86400000,revokedAt:null,durationKind:'hours',durationAmount:24});
+    assert.equal((await b.call('validate','POST',{key,hwid})).data.valid,true);
+  });
   await t.test('slow return body cannot backdate cooldown and stale CAPTCHA cannot issue a key',async()=>{
     await reset();const b=new Browser();await b.login();await b.call('flow/select','POST',{plan:'24h'});
     let release;const body=new ReadableStream({start(c){release=()=>{c.enqueue(new TextEncoder().encode('{"step":1}'));c.close();};}});
@@ -624,7 +658,8 @@ test('server security integration',async t=>{
     assert.equal(result.data.features.premium,true);
     const ordinaryId=crypto.randomUUID(),ordinaryKey=await keyFor(ordinaryId,env.KEY_SECRET);
     await globalThis.__securityDb.insert(schema.keys).values({id:ordinaryId,keyHash:await hash(ordinaryKey),label:'mission',source:'steps',createdAt:clock,expiresAt:clock+3600000,durationKind:'hours',durationAmount:1});
-    const ordinary=await b.call('runtime/session','POST',{...login,key:ordinaryKey,features:{breakAutoX2:true},source:'admin'});
+    const ordinaryHwid='executor:free-runtime-device';
+    const ordinary=await b.call('runtime/session','POST',{...login,key:ordinaryKey,hwid:ordinaryHwid,features:{breakAutoX2:true},source:'admin'});
     assert.equal(ordinary.data.features.breakAutoX2,false);assert.equal(ordinary.data.premiumEntry,null);
     assert.equal(ordinary.data.features.premium,false);
     assert.equal((await b.call('runtime/session','POST',{...login,hwid:'executor:wrong-device'})).status,403);
@@ -652,7 +687,7 @@ test('server security integration',async t=>{
     assert.equal((await b.call('runtime/session','POST',{...poolLogin,key:'invalid'})).status,403);
     assert.equal((await b.call('runtime/session','POST',{...poolLogin,hwid:'wrong-pool-device'})).status,403);
     assert.equal((await b.call('runtime/session','POST',poolLogin)).status,200);
-    assert.equal((await b.call('runtime/session','POST',{...poolLogin,key:ordinaryKey})).status,200);
+    assert.equal((await b.call('runtime/session','POST',{...poolLogin,key:ordinaryKey,hwid:ordinaryHwid})).status,200);
     assert.equal((await b.call('games')).data.games.find(g=>g.id==='crazy-8-ball').launches,2);
     assert.equal((await fetchFile(result.data.prefix+petRideFile)).status,200,'admin-created Key can load Pet Ride');
     assert.equal((await fetchFile(ordinary.data.prefix+petRideFile)).status,200,'Free Key can load Pet Ride');

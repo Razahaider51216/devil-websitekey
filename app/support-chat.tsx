@@ -120,7 +120,7 @@ export function SupportChat() {
   if (pathname?.startsWith("/admin") || pathname === "/verify") return null;
   return <aside className="support-widget">
     {open && <section id="devil-support-chat" className="support-panel" role="dialog" aria-label="DEVIL HUB Support">
-      <header><div><img className="support-brand-logo" src="/devilhubv3.png" alt="DEVIL HUB" width={34} height={28}/><span><strong>DEVIL HUB</strong><small>ADMIN SUPPORT // v1.1.0</small></span></div><button className="support-icon-button" aria-label={language === "th" ? "ปิดแชท" : "Close chat"} onClick={() => { setOpen(false);button.current?.focus(); }}><X size={20}/></button></header>
+      <header><div><img className="support-brand-logo" src="/devilhubv3.png" alt="DEVIL HUB" width={34} height={28}/><span><strong>DEVIL HUB</strong><small>ADMIN SUPPORT // v1.1.2</small></span></div><button className="support-icon-button" aria-label={language === "th" ? "ปิดแชท" : "Close chat"} onClick={() => { setOpen(false);button.current?.focus(); }}><X size={20}/></button></header>
       <ChatConversation path="support/thread"/>
     </section>}
     <button ref={button} className="support-launcher" aria-expanded={open} aria-controls="devil-support-chat" aria-label={language === "th" ? "แชทกับแอดมิน" : "Chat with admin"} onClick={() => setOpen(!open)}>{open ? <X size={24}/> : <MessageSquare size={24}/>}</button>

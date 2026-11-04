@@ -101,6 +101,11 @@ async function finalize(order: Order, token: string, proof: StoredProof, slipKey
       AND EXISTS(SELECT 1 FROM payment_receipts WHERE transaction_id=? AND order_id=?)
       AND EXISTS(SELECT 1 FROM access_keys WHERE id=? AND owner_id=? AND source='purchase')`)
       .bind(now, proof.payment.transactionId, slipKey, proof.slipSha256, order.id, token, proof.payment.transactionId, order.id, order.key_id, order.owner_id),
+    database.prepare(`UPDATE access_keys SET expires_at=? WHERE owner_id=? AND source='steps' AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at>?) AND EXISTS(SELECT 1 FROM access_keys premium WHERE premium.id=?
+        AND premium.owner_id=? AND premium.source='purchase' AND premium.revoked_at IS NULL
+        AND (premium.expires_at IS NULL OR premium.expires_at>?))`)
+      .bind(now,order.owner_id,now,order.key_id,order.owner_id,now),
   ];
   const results = await database.batch(statements);
   if (results.some(result => !result.success)) throw new Error("Shop payment transaction failed");
@@ -127,6 +132,11 @@ async function approveManually(order:Order,token:string,adminId:string){
       WHERE id=? AND status='verifying' AND verify_token=? AND EXISTS(SELECT 1 FROM purchase_reviews WHERE order_id=?)
       AND EXISTS(SELECT 1 FROM access_keys WHERE id=? AND owner_id=? AND source='purchase')`)
       .bind(now,transactionId,order.id,token,order.id,order.key_id,order.owner_id),
+    database.prepare(`UPDATE access_keys SET expires_at=? WHERE owner_id=? AND source='steps' AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at>?) AND EXISTS(SELECT 1 FROM access_keys premium WHERE premium.id=?
+        AND premium.owner_id=? AND premium.source='purchase' AND premium.revoked_at IS NULL
+        AND (premium.expires_at IS NULL OR premium.expires_at>?))`)
+      .bind(now,order.owner_id,now,order.key_id,order.owner_id,now),
   ]);
   if(results.some(result=>!result.success))throw new Error("Admin approval transaction failed");
   const updated=await getOrder(order.id,order.owner_id);

@@ -19,6 +19,7 @@ import { handleDiscordVerification } from "./discord-verification";
 import { translateMissionTitle } from "./translate-mission-title";
 import { handleLuaGeneration } from "./lua-generation";
 import { handleShop } from "./shop";
+import { activePremium, retireOwnedFree } from "./access-policy";
 
 export const vars = () => env as unknown as Record<string, string>;
 export class HttpError extends Error { code: number; constructor(code: number, message: string) { super(message); this.code = code; } }
@@ -54,7 +55,7 @@ export function sameOrigin(req: Request) {
   requireOrigin(req);
 }
 export async function body(req: Request) {
-  return await readJson(req) as { plan: unknown; step: number; key: string; hwid: string; links: unknown; kind: Duration["kind"]; amount: number; label: unknown; token: unknown };
+  return await readJson(req) as { id: unknown; plan: unknown; step: number; key: string; hwid: string; links: unknown; kind: Duration["kind"]; amount: number; label: unknown; token: unknown };
 }
 export async function rate(req: Request, kind: string, maximum: number) {
   const now = Date.now(), bucket = Math.floor(now / 60_000);
@@ -124,7 +125,9 @@ export async function state(id: string) {
   const snapshot = await planSettings();
   const conf = await config(plan, snapshot), now = Date.now();
   const rows = await db.select().from(steps).where(eq(steps.flowId, id));
-  const issued = await db.select().from(keys).where(eq(keys.flowId, id)).get();
+  const premium = await activePremium(session?.ownerId, now);
+  if (premium) await retireOwnedFree(session?.ownerId, now);
+  const issued = premium || await db.select().from(keys).where(eq(keys.flowId, id)).get();
   const result = [];
   let completedAt = 0;
   const byNumber = new Map(rows.map(row => [row.number, row]));
@@ -147,7 +150,9 @@ export async function state(id: string) {
     return { ...preset, linkSteps: settings.steps.length, totalSteps: settings.steps.length + 1,
       waitSeconds: waits[0] ?? 0, minWaitSeconds: waits.reduce((a,b) => Math.min(a,b), waits[0] ?? 0), maxWaitSeconds: waits.reduce((a,b) => Math.max(a,b), 0) };
   }));
-  return { version: "1.1.0", plans: availablePlans, plan, selected: !!plan, serverNow: now, lifetimeHours: issued?.durationKind === "hours" ? issued.durationAmount : conf.lifetimeHours, waitSeconds: conf.waitSeconds, steps: !plan && !issued ? [] : result,
+  return { version: "1.1.2", plans: availablePlans, plan, selected: !!plan && !premium, premium: !!premium,
+    canDeleteFreeKey: issued?.source === "steps" && issued.revokedAt === null,
+    serverNow: now, lifetimeHours: issued?.durationKind === "hours" ? issued.durationAmount : conf.lifetimeHours, waitSeconds: conf.waitSeconds, steps: premium || !plan && !issued ? [] : result,
     configurationUpdatedAt: conf.updatedAt,
     configurationId: conf.settingsId, modeSettingsUpdatedAt: conf.modeSettingsUpdatedAt,
     turnstile: { enabled, configured: !!(siteKey && secret), siteKey, challenge: await hash("turnstile:" + id), passed },
@@ -188,6 +193,27 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     }), ["validate"]) });
   }
   if (route.startsWith("auth/")) return handleDiscord(req, route, rate);
+  if (route === "keys/free/delete" && req.method === "POST") {
+    sameOrigin(req); await rate(req, "delete-free", 15);
+    const user = await requireLogin(req);
+    if (!user) fail(401, "Please sign in with Google or Discord first");
+    const { id } = await body(req);
+    if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id)) fail(400, "Invalid key ID");
+    const row = await db.select().from(keys).where(and(eq(keys.id, id), eq(keys.ownerId, user.id), eq(keys.source, "steps"))).get();
+    if (!row) fail(404, "Free key not found");
+    // Expire all old mission sessions before revoking, in the same transaction.
+    // The predicate makes retries safe: replaying deletion cannot reset a new flow.
+    const deletedAt = Date.now();
+    await db.batch([
+      db.update(flows).set({ expiresAt: deletedAt }).where(and(eq(flows.ownerId, user.id),
+        sql`exists(select 1 from access_keys where id=${id} and owner_id=${user.id} and source='steps' and revoked_at is null)`)),
+      db.update(keys).set({ revokedAt: deletedAt }).where(and(eq(keys.id, id), eq(keys.ownerId, user.id), eq(keys.source, "steps"), sql`${keys.revokedAt} is null`)),
+    ]);
+    const session = await flow(req, true);
+    const response = json(await state(session.row.id));
+    for (const value of session.cookies) response.headers.append("Set-Cookie", value);
+    return response;
+  }
   if (route === "flow/select" && req.method === "POST") {
     sameOrigin(req); await rate(req, "select-plan", 30);
     const input = await body(req);
@@ -255,11 +281,16 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
       select ${id},${session.row.id},${await hash(key)},${current.lifetimeHours + 'H access'},'steps',${issuedAt},${issuedAt + current.lifetimeHours * 3_600_000},null,'hours',${current.lifetimeHours},${session.row.ownerId}
       where exists (select 1 from flows where id=${session.row.id} and expires_at > ${issuedAt} and plan=${current.plan})
       and (${session.row.ownerId} is null or not exists (select 1 from access_keys where owner_id=${session.row.ownerId} and source='steps' and revoked_at is null and (expires_at is null or expires_at > ${issuedAt})))
+      and (${session.row.ownerId} is null or not exists (select 1 from access_keys where owner_id=${session.row.ownerId} and source in ('purchase','admin') and revoked_at is null and (expires_at is null or expires_at > ${issuedAt})))
       and coalesce((select updated_at from site_settings where id=${current.configurationId}),0)=${current.configurationUpdatedAt ?? 0}
       and coalesce((select updated_at from site_settings where id=${'links:' + current.plan}),0)=${current.modeSettingsUpdatedAt ?? 0}
       and ${eligibleSteps} and ${human} on conflict(flow_id) do nothing`);
     const row = await db.select().from(keys).where(eq(keys.flowId, session.row.id)).get();
-    if (!row) fail(409, "Steps or verification changed. Please reload and try again.");
+    if (!row) {
+      const premium = await activePremium(session.row.ownerId);
+      if (premium) return json(await presentKey(premium));
+      fail(409, "Steps or verification changed. Please reload and try again.");
+    }
     return json(await presentKey(row!));
   }
   if (route === "flow/verify" && req.method === "POST") {
@@ -299,7 +330,9 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
           WHERE freeDevice.key_id=${row.id} AND freeDevice.hwid_hash=${deviceHash}
           AND premium.source IN ('admin','purchase') AND premium.revoked_at IS NULL
           AND (premium.expires_at IS NULL OR premium.expires_at>${now}) LIMIT 1`);
-        premiumRequired = !!upgrade;
+        const owned = row.ownerId && await activePremium(row.ownerId, now);
+        const freeBinding = owned && await db.select().from(keyDevices).where(and(eq(keyDevices.keyId, row.id), eq(keyDevices.hwidHash, deviceHash))).get();
+        premiumRequired = !!upgrade || !!freeBinding;
       }
       return json({ valid: false, status: keyStatus, expiresAt: row?.expiresAt ?? null,
         ...(premiumRequired ? { premiumRequired: true, message: "กรุณาใส่คีย์พรีเมียมแทนคีย์ฟรีบนเครื่องนี้" } : {}) });
@@ -331,9 +364,12 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     await db.run(sql`UPDATE access_keys SET expires_at=${upgradedAt}
       WHERE source='steps' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>${upgradedAt})
       AND id IN (SELECT key_id FROM key_devices WHERE hwid_hash=${hwidHash})
-      AND EXISTS(SELECT 1 FROM access_keys premium JOIN key_devices device ON device.key_id=premium.id
+      AND (EXISTS(SELECT 1 FROM access_keys premium JOIN key_devices device ON device.key_id=premium.id
         WHERE device.hwid_hash=${hwidHash} AND premium.source IN ('admin','purchase')
-        AND premium.revoked_at IS NULL AND (premium.expires_at IS NULL OR premium.expires_at>${upgradedAt}))`);
+        AND premium.revoked_at IS NULL AND (premium.expires_at IS NULL OR premium.expires_at>${upgradedAt}))
+        OR EXISTS(SELECT 1 FROM access_keys premium WHERE premium.owner_id=access_keys.owner_id
+          AND premium.source IN ('admin','purchase') AND premium.revoked_at IS NULL
+          AND (premium.expires_at IS NULL OR premium.expires_at>${upgradedAt})))`);
     const current = await db.select().from(keys).where(eq(keys.id, row.id)).get();
     const currentStatus = current ? status(current, Date.now()) : "invalid";
     const premiumRequired = row.source === "steps" && currentStatus === "expired" && (row.expiresAt === null || row.expiresAt > upgradedAt);

@@ -1,5 +1,8 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ลบคีย์ฟรี": "Delete Free key",
+  "ลบคีย์ฟรีนี้หรือไม่? คีย์เดิมจะใช้ไม่ได้ และต้องทำ Step ใหม่ทั้งหมด": "Delete this Free key? It will stop working and you must complete all steps again.",
+  "คุณมีคีย์พรีเมียมที่ใช้งานได้แล้ว ใช้คีย์นี้ได้เลย ไม่สามารถทำ Step รับคีย์ฟรีซ้ำได้": "Your Premium key is active. Use this key; Free key missions are unavailable while Premium is active.",
   "ซื้อพรีเมียม": "Buy premium",
   "ร้านค้าพรีเมียม": "Premium shop",
   "ช่องแชท": "Support inbox",

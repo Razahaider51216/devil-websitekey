@@ -116,6 +116,23 @@ test('premium shop routes',async t=>{
     const access=await call('runtime/session',{method:'POST',data:{bootstrap:'private-runtime-domain-20261028-2',key:paid.data.key.key,hwid:'purchased-device-one'}});
     assert.equal(access.status,200);assert.equal(access.data.features.premium,true);assert.equal(access.data.features.breakAutoX2,true);
   });
+  await t.test('automatic payment and direct admin approval retire only the buyer Free keys in the issuance transaction',async()=>{
+    for(const mode of ['automatic','manual']){
+      await reset();const admin=await session(adminId),user=await session();
+      const free=crypto.randomUUID(),unrelated=crypto.randomUUID();
+      for(const [id,ownerId]of [[free,owner],[unrelated,other]])await globalThis.__shopDb.insert(schema.keys).values({id,keyHash:await hash(id),ownerId,label:'Free fixture',source:'steps',createdAt:clock,expiresAt:clock+86400000,durationKind:'hours',durationAmount:24});
+      if(mode==='automatic'){
+        const p=await product(admin),a=await order(user,p.id);clock+=2000;
+        assert.equal((await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()})).status,200);
+      }else{
+        const a=await failedPurchase(admin,user);
+        assert.ok((await client.execute({sql:'SELECT expires_at FROM access_keys WHERE id=?',args:[free]})).rows[0].expires_at>clock,'failed slip retired Free before approval');
+        assert.equal((await call('admin/shop/orders/'+a.id+'/approve',{method:'POST',cookie:admin,data:approval(a)})).status,200);
+      }
+      assert.equal((await client.execute({sql:'SELECT expires_at FROM access_keys WHERE id=?',args:[free]})).rows[0].expires_at,clock);
+      assert.ok((await client.execute({sql:'SELECT expires_at FROM access_keys WHERE id=?',args:[unrelated]})).rows[0].expires_at>clock);
+    }
+  });
   await t.test('transient image storage retries before SlipOK and persistent failures never check or issue keys',async()=>{
     await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock+=2000;
     const put=env.SCRIPT_FILES.put;let failures=1;

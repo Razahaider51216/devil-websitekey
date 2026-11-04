@@ -387,6 +387,82 @@ test('server security integration',async t=>{
     assert.equal(issued[0].data.expiresAt-issued[0].data.createdAt,86400000);
     assert.equal((await client.execute('select count(*) n from access_keys')).rows[0].n,1);
   });
+  await t.test('owners delete only Free keys, revoke Script access and restart every mission without replay resetting the new flow',async()=>{
+    await reset();const b=new Browser(),other=new Browser(),guest=new Browser();await b.login();await other.login('223456789012345678');
+    let flow=(await b.call('flow/select','POST',{plan:'6h'})).data;
+    for(const step of flow.steps){await b.call('flow/open','POST',{step:step.number});await b.call('flow/return','POST',{step:step.number});clock+=step.waitSeconds*1000;}
+    flow=(await b.call('flow')).data;challenge=flow.turnstile.challenge;captchaAction='devil-key-claim';await b.call('flow/verify','POST',{token:'valid-token'});
+    const issued=(await b.call('flow/claim','POST',{})).data;
+    assert.equal((await b.call('validate','POST',{key:issued.key,hwid:'deleted-free-device'})).data.valid,true);
+    const oldJar=new Map(b.jar),oldFlow=b.jar.get('devil_flow');
+    assert.equal((await guest.call('keys/free/delete','POST',{id:issued.id})).status,401);
+    assert.equal((await other.call('keys/free/delete','POST',{id:issued.id})).status,404);
+    assert.equal((await b.call('keys/free/delete','POST',{id:issued.id},{origin:'https://evil.test'})).status,403);
+    const deleted=await b.call('keys/free/delete','POST',{id:issued.id});assert.equal(deleted.status,200);
+    assert.equal(deleted.data.version,'1.1.2');assert.equal(deleted.data.key,null);assert.equal(deleted.data.selected,false);
+    assert.notEqual(b.jar.get('devil_flow'),oldFlow);
+    assert.equal((await b.call('validate','POST',{key:issued.key,hwid:'deleted-free-device'})).data.status,'revoked');
+    const old=new Browser();old.jar=oldJar;assert.equal((await old.call('flow/claim','POST',{})).status,401);
+    const fresh=(await b.call('flow/select','POST',{plan:'6h'})).data;
+    assert.ok(fresh.steps.every(step=>step.status==='ready'));assert.equal(fresh.turnstile.passed,false);
+    assert.equal((await b.call('flow/claim','POST',{})).status,409);
+    await b.call('flow/open','POST',{step:1});const newFlow=b.jar.get('devil_flow');
+    assert.equal((await b.call('keys/free/delete','POST',{id:issued.id})).status,200);
+    assert.equal(b.jar.get('devil_flow'),newFlow,'deletion replay reset new progress');
+    assert.equal((await b.call('flow')).data.steps[0].status,'opened');
+  });
+  await t.test('owned purchased Premium is restored across browsers, blocks missions and invalidates Free on Script before Premium HWID binding',async()=>{
+    await reset();const b=new Browser();await b.login('223456789012345678');
+    const owner=(await b.call('auth/session')).data.user.id;
+    const freeId=crypto.randomUUID(),freeKey=await keyFor(freeId,env.KEY_SECRET);
+    await globalThis.__securityDb.insert(schema.keys).values({id:freeId,keyHash:await hash(freeKey),ownerId:owner,label:'Free',source:'steps',createdAt:clock,expiresAt:clock+86400000,durationKind:'hours',durationAmount:24});
+    assert.equal((await b.call('validate','POST',{key:freeKey,hwid:'owned-premium-device'})).data.valid,true);
+    const premiumId=crypto.randomUUID(),premiumKey=await keyFor(premiumId,env.KEY_SECRET);
+    await globalThis.__securityDb.insert(schema.keys).values({id:premiumId,keyHash:await hash(premiumKey),ownerId:owner,label:'Purchased',source:'purchase',createdAt:clock,expiresAt:null,durationKind:'permanent',durationAmount:1});
+    const refused=(await b.call('validate','POST',{key:freeKey,hwid:'owned-premium-device'})).data;
+    assert.equal(refused.valid,false);assert.equal(refused.premiumRequired,true);assert.equal(refused.status,'expired');assert.ok(!JSON.stringify(refused).includes(premiumKey));
+    assert.equal((await b.call('validate','POST',{key:freeKey,hwid:'different-device-123'})).data.premiumRequired,undefined);
+    for(const browser of[b,new Browser()]){
+      if(browser!==b)await browser.login('223456789012345678');
+      const restored=(await browser.call('flow')).data;
+      assert.equal(restored.key.key,premiumKey);assert.equal(restored.premium,true);assert.equal(restored.selected,false);assert.equal(restored.canClaim,false);assert.equal(restored.canDeleteFreeKey,false);assert.deepEqual(restored.steps,[]);
+      assert.equal((await browser.call('flow/select','POST',{plan:'12h'})).data.key.key,premiumKey);
+      assert.equal((await browser.call('flow/claim','POST',{})).data.key,premiumKey);
+      assert.notEqual((await browser.call('flow/open','POST',{step:1})).status,200);
+      assert.notEqual((await browser.call('flow/verify','POST',{token:'valid-token'})).status,200);
+      assert.equal((await browser.call('keys/free/delete','POST',{id:premiumId})).status,404);
+    }
+    assert.equal((await b.call('validate','POST',{key:premiumKey,hwid:'owned-premium-device'})).data.valid,true);
+  });
+  await t.test('atomic Free issuance loses to a Premium purchase committed after eligibility was checked',async()=>{
+    await reset();const b=new Browser();await b.login('223456789012345678');
+    let current=(await b.call('flow/select','POST',{plan:'6h'})).data;
+    for(const step of current.steps){await b.call('flow/open','POST',{step:step.number});await b.call('flow/return','POST',{step:step.number});clock+=step.waitSeconds*1000;}
+    current=(await b.call('flow')).data;challenge=current.turnstile.challenge;captchaAction='devil-key-claim';await b.call('flow/verify','POST',{token:'valid-token'});
+    const db=globalThis.__securityDb;const id=crypto.randomUUID(),key=await keyFor(id,env.KEY_SECRET);let intercepted=false;
+    globalThis.__securityDb=new Proxy(db,{get(target,prop){
+      if(prop==='run')return async statement=>{
+        if(!intercepted){intercepted=true;await db.insert(schema.keys).values({id,keyHash:await hash(key),ownerId:'223456789012345678',label:'Just purchased',source:'purchase',createdAt:clock,expiresAt:clock+86400000,durationKind:'days',durationAmount:1});}
+        return target.run(statement);
+      };
+      const value=Reflect.get(target,prop);return typeof value==='function'?value.bind(target):value;
+    }});
+    try{
+      const result=await b.call('flow/claim','POST',{});assert.equal(result.status,200);assert.equal(result.data.key,key);assert.ok(intercepted);
+      assert.equal((await client.execute("select count(*) n from access_keys where source='steps'")).rows[0].n,0);
+    }finally{globalThis.__securityDb=db;}
+  });
+  await t.test('Google Premium follows account ownership and expired or revoked Premium never blocks new Free missions',async()=>{
+    await reset();env.GOOGLE_CLIENT_ID='integration.apps.googleusercontent.com';env.GOOGLE_CLIENT_SECRET='test-google-secret';
+    const b=new Browser();await b.loginGoogle();const owner=(await b.call('auth/session')).data.user.id;
+    assert.ok(owner.startsWith('google:'));
+    const id=crypto.randomUUID(),key=await keyFor(id,env.KEY_SECRET);
+    await globalThis.__securityDb.insert(schema.keys).values({id,keyHash:await hash(key),ownerId:owner,label:'Google purchase',source:'purchase',createdAt:clock,expiresAt:clock+1000,durationKind:'days',durationAmount:1});
+    assert.equal((await b.call('flow')).data.key.key,key);
+    clock+=1000;let selected=(await b.call('flow/select','POST',{plan:'6h'})).data;assert.equal(selected.premium,false);assert.equal(selected.key,null);assert.ok(selected.steps.length>0);
+    await client.execute({sql:'UPDATE access_keys SET expires_at=NULL,revoked_at=? WHERE id=?',args:[clock,id]});
+    selected=(await b.call('flow')).data;assert.equal(selected.premium,false);assert.equal(selected.key,null);
+  });
   await t.test('script validation stays public and HWID binding/expiry remain enforced',async()=>{
     await reset();const id=crypto.randomUUID(),key=await keyFor(id,env.KEY_SECRET);
     await globalThis.__securityDb.insert(schema.keys).values({id,keyHash:await hash(key),label:'legacy',source:'admin',createdAt:clock,expiresAt:clock+1000,revokedAt:null,durationKind:'hours',durationAmount:24});

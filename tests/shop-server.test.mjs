@@ -116,6 +116,19 @@ test('premium shop routes',async t=>{
     const access=await call('runtime/session',{method:'POST',data:{bootstrap:'private-runtime-domain-20261028-2',key:paid.data.key.key,hwid:'purchased-device-one'}});
     assert.equal(access.status,200);assert.equal(access.data.features.premium,true);assert.equal(access.data.features.breakAutoX2,true);
   });
+  await t.test('transient image storage retries before SlipOK and persistent failures never check or issue keys',async()=>{
+    await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock+=2000;
+    const put=env.SCRIPT_FILES.put;let failures=1;
+    env.SCRIPT_FILES.put=async(...args)=>{if(failures-->0)throw Error('temporary storage unavailable');return put(...args);};
+    const paid=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});
+    assert.equal(paid.status,200,JSON.stringify(paid));assert.equal(calls,1);assert.equal(await count('access_keys'),1);
+    await reset();const admin2=await session(adminId),user2=await session(),p2=await product(admin2),b=await order(user2,p2.id);clock+=2000;
+    env.SCRIPT_FILES.put=async()=>{throw Error('private provider detail must not leak');};
+    const failed=await call('shop/orders/'+b.id+'/verify',{method:'POST',cookie:user2,data:upload()});
+    assert.equal(failed.status,503);assert.equal(failed.data.code,'SLIP_STORAGE_UNAVAILABLE');
+    assert.ok(!JSON.stringify(failed).includes('private provider detail'));assert.equal(calls,0);assert.equal(await count('access_keys'),0);
+    const row=(await call('shop/orders/'+b.id,{cookie:user2})).data;assert.equal(row.status,'pending');assert.equal(row.retryAt,clock+30000);
+  });
   await t.test('wrong amount, recipient, transfer time, duplicate-provider responses and expired invoices never issue keys',async()=>{
     for(const change of [{amount:99.91},{receiver:{displayName:'คนอื่น ระบบ'}},{transTimestamp:new Date(clock-86400000).toISOString()},{code:1012},{code:1013},{code:1014},{code:1002}]){
       await reset();const admin=await session(adminId),user=await session(),p=await product(admin),a=await order(user,p.id);clock+=2000;proof={...proof,...change};

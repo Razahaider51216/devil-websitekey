@@ -6,6 +6,7 @@ import { readJson, requireOrigin, RequestError } from "./security";
 import { emptyShopSettings, paymentQr, shopSettingId, validateProduct, validateShopSettings, verifyPaymentData,
   type PaymentConfig, type Product, type ShopSettings, type VerifiedPayment } from "./shop-domain";
 import { checkSlip, readSlipUpload, SlipError } from "./slipok";
+import { paymentStorage } from "./payment-storage";
 
 type Dependencies = { admin: (req: Request) => Promise<void>; rate: (req: Request, kind: string, max: number) => Promise<void> };
 type ProductRow = { id: string; name: string; description: string; price_satang: number; duration_kind: Product["durationKind"];
@@ -151,32 +152,42 @@ async function verifyOrder(req: Request, order: Order) {
     if (updated.status === "paid") return reply(await orderView(updated));
     throw new RequestError(409, "รายการกำลังตรวจสอบ กรุณารอสักครู่");
   }
+  let verificationStage = "image-hash";
   try {
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", upload.bytes)), b => b.toString(16).padStart(2,"0")).join("");
     const prefix = `shop/slips/${order.id}/${digest}`, fingerprint = await hash(order.payment_config);
     // Retain the submitted image even when the provider rejects or times out,
     // so an administrator can review it without asking for another payment.
-    await store.put(prefix + ".image", upload.bytes, { httpMetadata: { contentType: upload.file.type } });
+    verificationStage = "image-save";
+    await paymentStorage(() => store.put(prefix + ".image", upload.bytes, { httpMetadata: { contentType: upload.file.type } }));
+    verificationStage = "image-link";
     await db().prepare("UPDATE purchase_orders SET slip_key=?,slip_sha256=? WHERE id=? AND verify_token=? AND status='verifying'")
       .bind(prefix + ".image",digest,order.id,token).run();
-    const saved = await store.get(prefix + ".json");
+    verificationStage = "proof-read";
+    const saved = await paymentStorage(() => store.get(prefix + ".json"));
     let proof: StoredProof;
     if (saved) {
       proof = await saved.json<StoredProof>();
       if (!proofMatches(proof, order, digest, fingerprint)) throw new RequestError(503, "หลักฐานที่บันทึกไม่สมบูรณ์ กรุณาติดต่อแอดมิน");
     } else {
+      verificationStage = "provider-check";
       const data = await checkSlip(upload.file, order.price_satang, payment.branchId, vars().SLIPOK_API_KEY);
+      verificationStage = "payment-validation";
       const verified = verifyPaymentData(data, { priceSatang: order.price_satang, createdAt: order.created_at, expiresAt: order.expires_at, payment }, Date.now());
       proof = { orderId: order.id, slipSha256: digest, paymentFingerprint: fingerprint, payment: verified, verifiedAt: Date.now(), imageType: upload.file.type };
       // Durable verified proof lets the same order retry after a DB outage without
       // sending its already-logged slip to SlipOK a second time.
-      await store.put(prefix + ".json", JSON.stringify(proof), { httpMetadata: { contentType: "application/json" } });
+      verificationStage = "proof-save";
+      await paymentStorage(() => store.put(prefix + ".json", JSON.stringify(proof), { httpMetadata: { contentType: "application/json" } }));
     }
+    verificationStage = "payment-commit";
     const paid = await finalize(order, token, proof, prefix + ".image");
+    verificationStage = "order-result";
     return reply(await orderView(paid));
   } catch (error) {
     // Diagnostics exclude the slip image, bank details, API secret and key.
     console.warn("Shop slip verification failed", { orderId: order.id,
+      stage: verificationStage,
       code: error instanceof SlipError ? error.code : error instanceof RequestError ? "PAYMENT_VALIDATION" : "PAYMENT_SAVE",
       status: error instanceof RequestError ? error.status : 503 });
     const message = error instanceof RequestError ? error.message : "บันทึกรายการไม่สำเร็จ กรุณาส่งสลิปเดิมอีกครั้ง ห้ามโอนซ้ำ";

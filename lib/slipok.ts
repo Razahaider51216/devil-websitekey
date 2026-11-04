@@ -4,6 +4,18 @@ export class SlipError extends RequestError {
   code: string; retryAfter: number;
   constructor(status: number, code: string, message: string, retryAfter = 0) { super(status, message);this.code = code;this.retryAfter = retryAfter; }
 }
+function completedBankData(value:unknown){
+  if(!value || typeof value!=="object" || Array.isArray(value))return null;
+  const data=value as Record<string,unknown>;
+  if(data.success===true)return data;
+  if(data.success===undefined && typeof data.transRef==="string" && /^[A-Za-z0-9_-]{5,100}$/.test(data.transRef)
+      && typeof data.sendingBank==="string" && /^\d{3}$/.test(data.sendingBank)
+      && typeof data.receivingBank==="string" && /^(?:\d{3})?$/.test(data.receivingBank)
+      && typeof data.amount==="number" && Number.isFinite(data.amount) && data.amount>0
+      && data.receiver && typeof data.receiver==="object" && !Array.isArray(data.receiver)
+      && (typeof data.transTimestamp==="string" || typeof data.transDate==="string" && typeof data.transTime==="string"))return {...data,success:true};
+  return null;
+}
 export async function checkSlip(file: File, amountSatang: number, branchId: string, apiKey: string, fetcher: typeof fetch = fetch) {
   if (!/^\d{1,12}$/.test(branchId) || !apiKey) throw new SlipError(503, "PAYMENT_CONFIG", "ระบบตรวจสลิปยังไม่พร้อม กรุณาติดต่อแอดมิน");
   const form = new FormData();form.set("files", file);form.set("log", "true");form.set("amount", (amountSatang / 100).toFixed(2));
@@ -16,13 +28,14 @@ export async function checkSlip(file: File, amountSatang: number, branchId: stri
   if (response.status >= 300 && response.status < 400) throw new SlipError(503, "SLIP_UNAVAILABLE", "ระบบตรวจสลิปไม่พร้อม กรุณาลองใหม่โดยไม่ต้องโอนซ้ำ", 30);
   let result: { success?: unknown; data?: unknown; code?: unknown };
   try { result = await response.json(); } catch { throw new SlipError(503, "SLIP_UNAVAILABLE", "ระบบตรวจสลิปไม่พร้อม กรุณาลองใหม่โดยไม่ต้องโอนซ้ำ", 30); }
-  if (response.ok && result.success === true) return result.data;
+  if (response.ok && result.success === true) return completedBankData(result.data) || result.data;
   const code = Number(result.code);
   // SlipOK returns the original bank-verified data with 1012. The caller must
   // still validate the invoice and atomically claim its transaction reference.
   // A duplicate code alone (or an incomplete/failed bank result) is never proof.
-  if (response.status === 400 && code === 1012 && result.data && typeof result.data === "object"
-      && (result.data as { success?: unknown }).success === true) return result.data;
+  // The live API omits nested success on completed records, including 1012.
+  // Normalize only authenticated provider responses; never client payment data.
+  if (response.status===400 && code===1012){const data=completedBankData(result.data);if(data)return data;}
   if (code === 1012) throw new SlipError(409, "SLIP_DUPLICATE", "สลิปนี้ถูกตรวจสอบแล้ว หากยังไม่ได้รับคีย์ กรุณาแจ้งเลขคำสั่งซื้อกับแอดมิน");
   if (code === 1013) throw new SlipError(400, "SLIP_AMOUNT", "ยอดโอนไม่ตรงกับคำสั่งซื้อ");
   if (code === 1014) throw new SlipError(400, "SLIP_RECEIVER", "บัญชีผู้รับไม่ตรงกับร้าน");

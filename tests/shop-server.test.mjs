@@ -131,7 +131,8 @@ test('premium shop routes',async t=>{
     const failed=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});
     assert.equal(failed.status,503);assert.equal(failed.data.code,'SLIP_BANK_UNAVAILABLE');assert.equal(await count('access_keys'),0);
     assert.equal((await call('shop/orders/'+a.id,{cookie:user})).data.retryAt,clock+900000);
-    proof={code:1012,data:verified};clock=a.expiresAt+1000;
+    const {success:omitted,...liveDuplicate}=verified;
+    proof={code:1012,data:{...liveDuplicate,receivingBank:'',paidLocalCurrency:null}};clock=a.expiresAt+1000;
     const view=(await call('shop/orders/'+a.id,{cookie:user})).data;
     assert.equal(view.status,'expired');assert.equal(view.canVerify,true);assert.equal(view.qrPayload,null);
     const recovered=await call('shop/orders/'+a.id+'/verify',{method:'POST',cookie:user,data:upload()});

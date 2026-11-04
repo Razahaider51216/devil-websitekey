@@ -71,7 +71,7 @@ export function verifyPaymentData(data: unknown, order: { priceSatang: number; c
   if (!data || typeof data !== "object") throw new RequestError(502, "ข้อมูลยืนยันการโอนไม่ครบ กรุณาติดต่อแอดมิน");
   const d = data as Record<string, unknown>;
   if (d.success !== true || typeof d.transRef !== "string" || !/^[A-Za-z0-9_-]{5,100}$/.test(d.transRef)
-      || typeof d.sendingBank !== "string" || !/^\d{3}$/.test(d.sendingBank) || typeof d.receivingBank !== "string" || !/^\d{3}$/.test(d.receivingBank)) throw new RequestError(400, "สลิปไม่ผ่านการยืนยันจากธนาคาร");
+      || typeof d.sendingBank !== "string" || !/^\d{3}$/.test(d.sendingBank) || typeof d.receivingBank !== "string" || !/^(?:\d{3})?$/.test(d.receivingBank)) throw new RequestError(400, "สลิปไม่ผ่านการยืนยันจากธนาคาร");
   if (satang(d.amount) !== order.priceSatang) throw new RequestError(400, "ยอดโอนไม่ตรงกับคำสั่งซื้อ กรุณาโอนตามยอดที่แสดง");
   if (d.countryCode !== "TH" || (d.paidLocalCurrency !== undefined && d.paidLocalCurrency !== null && String(d.paidLocalCurrency) !== "764")) throw new RequestError(400, "รองรับการโอนเงินบาทในประเทศไทยเท่านั้น");
   const transferredAt = timestamp(d);

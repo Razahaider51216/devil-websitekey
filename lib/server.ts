@@ -285,7 +285,25 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
     await rate(req, "validate", 600); await rate(req, "validate-key:" + await hash(input.key.trim()), 30);
     const row = await db.select().from(keys).where(eq(keys.keyHash, await hash(input.key.trim()))).get();
     const keyStatus = row ? status(row, Date.now()) : "invalid";
-    if (!row || keyStatus !== "active") return json({ valid: false, status: keyStatus, expiresAt: row?.expiresAt ?? null });
+    if (!row || keyStatus !== "active") {
+      // Preserve the upgrade reason on later Script checks after the Free row
+      // has already expired; only reveal it to its previously bound HWID.
+      let premiumRequired = false;
+      if (row?.source === "steps" && keyStatus === "expired" && typeof input.hwid === "string"
+          && input.hwid.trim().length >= 8 && input.hwid.length <= 512) {
+        const deviceHash = await hash("DEVIL-HWID:v1:" + input.hwid.trim());
+        const now = Date.now();
+        const upgrade = await db.get(sql`SELECT 1 AS found FROM key_devices freeDevice
+          JOIN key_devices premiumDevice ON premiumDevice.hwid_hash=freeDevice.hwid_hash
+          JOIN access_keys premium ON premium.id=premiumDevice.key_id
+          WHERE freeDevice.key_id=${row.id} AND freeDevice.hwid_hash=${deviceHash}
+          AND premium.source IN ('admin','purchase') AND premium.revoked_at IS NULL
+          AND (premium.expires_at IS NULL OR premium.expires_at>${now}) LIMIT 1`);
+        premiumRequired = !!upgrade;
+      }
+      return json({ valid: false, status: keyStatus, expiresAt: row?.expiresAt ?? null,
+        ...(premiumRequired ? { premiumRequired: true, message: "กรุณาใส่คีย์พรีเมียมแทนคีย์ฟรีบนเครื่องนี้" } : {}) });
+    }
     if (typeof input.hwid !== "string" || input.hwid.trim().length < 8 || input.hwid.length > 512) {
       return json({ valid: false, status: "hwid_required", expiresAt: row.expiresAt });
     }

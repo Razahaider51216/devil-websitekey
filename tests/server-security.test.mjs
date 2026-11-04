@@ -410,7 +410,11 @@ test('server security integration',async t=>{
       const premium=await seed(premiumSource);
       assert.equal((await b.call('validate','POST',{key:free1.key,hwid})).data.valid,true,'unbound premium expired Free');
       assert.equal((await b.call('validate','POST',{key:premium.key,hwid})).data.valid,true);
-      for(const free of [free1,free2])assert.equal((await b.call('validate','POST',{key:free.key,hwid})).data.status,'expired');
+      for(const free of [free1,free2]){
+        const expired=(await b.call('validate','POST',{key:free.key,hwid})).data;
+        assert.equal(expired.status,'expired');assert.equal(expired.premiumRequired,true,'later Script check lost upgrade reason');
+        assert.equal((await b.call('validate','POST',{key:free.key,hwid:other})).data.premiumRequired,undefined,'upgrade leaked to a different HWID');
+      }
       assert.equal((await b.call('validate','POST',{key:unrelated.key,hwid:other})).data.valid,true);
       const newFree=await seed('steps');const denied=await b.call('validate','POST',{key:newFree.key,hwid});
       assert.equal(denied.data.valid,false);assert.equal(denied.data.premiumRequired,true);assert.equal(denied.data.status,'expired');

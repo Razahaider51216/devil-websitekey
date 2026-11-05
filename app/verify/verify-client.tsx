@@ -48,7 +48,7 @@ export function DiscordVerification(){
   }
   const done=session?.status==='done',pending=session?.status==='approved',failed=session?.status==='failed'||session?.status==='expired';
   return <main className="discord-verify-page" lang="en"><section className="discord-verify-card">
-    <img className="discord-verify-logo" src="/devilhubv3.png" width={96} height={64} alt="DEVIL HUB"/>
+    <img className="discord-verify-logo" src="/devilhubv5.png" width={96} height={64} alt="DEVIL HUB"/>
     <span className="eyebrow"><ShieldCheck size={14}/> DISCORD // IDENTITY CHECK</span>
     <h1>{done?'VERIFIED.':pending?'ALMOST THERE.':'VERIFY YOUR IDENTITY.'}</h1>
     <p>{done?'Your identity has been verified successfully. Your role has been assigned.':pending?'Your security check passed. The bot is assigning your role.':'Confirm your Discord account and complete the human verification to receive your server role.'}</p>

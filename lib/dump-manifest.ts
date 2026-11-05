@@ -1,8 +1,8 @@
 export const dumpFiles = {
   "entry.lua": {
-    "key": "tools/dump/domain-20261029-1/entry.lua",
-    "bytes": 1123766,
-    "sha256": "5010c40eff5b9369536aaadf4171282720c0cf47d2fd85914465ed1a8b17fe20",
+    "key": "tools/dump/brand-v5-20261105-2/entry.lua",
+    "bytes": 1123750,
+    "sha256": "c556d0b3a45282fcfd854e2291d0731e8ebdfa999ec6c3c8fea35f05d774387f",
     "contentType": "text/plain; charset=utf-8"
   },
   "gui.lua": {
@@ -18,9 +18,9 @@ export const dumpFiles = {
     "contentType": "text/plain; charset=utf-8"
   },
   "logo.png": {
-    "key": "tools/dump/domain-20261029-1/logo.png",
-    "bytes": 1452160,
-    "sha256": "fca97266e91abae9109c39162c0714afc61876e0c9f191ff756d0cabc8211626",
+    "key": "tools/dump/brand-v5-20261105-2/logo.png",
+    "bytes": 1239483,
+    "sha256": "5811a965bb5551f05e6801ae53681cae1ad7ff766bba20772d2f84bcf472f332",
     "contentType": "image/png"
   }
 } as const;

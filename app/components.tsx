@@ -4,7 +4,7 @@ import { createContext, useContext, useState } from "react";
 import { LanguageSwitch, useLanguage } from "./language";
 import type { Language } from "../lib/translations";
 
-export function Brand() { return <a className="brand" href="/" aria-label="DEVIL KEY home"><span className="brand-mark"><img src="/devilhubv3.png" alt="DEVIL HUB" width={48} height={40}/></span><span>DEVIL<span className="brand-light"> KEY</span><small>OFFICIAL ACCESS PORTAL</small></span></a>; }
+export function Brand() { return <a className="brand" href="/" aria-label="DEVIL KEY home"><span className="brand-mark"><img src="/devilhubv5.png" alt="DEVIL HUB" width={48} height={40}/></span><span>DEVIL<span className="brand-light"> KEY</span><small>OFFICIAL ACCESS PORTAL</small></span></a>; }
 export const AdminVisibility = createContext(false);
 export function Header({ admin = false, active = "keys" }: { admin?: boolean; active?: "keys" | "games" | "buy" }) {
   const { t } = useLanguage();

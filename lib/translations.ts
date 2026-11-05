@@ -1,5 +1,11 @@
 export type Language = "th" | "en";
 export const english: Record<string, string> = {
+  "ประเภทคีย์": "Key category",
+  "คีย์ที่แอดมินสร้าง": "Admin-created keys",
+  "คีย์ฟรีจาก Step": "Free keys from steps",
+  "คีย์พรีเมียมจากการซื้อ": "Purchased Premium keys",
+  "ยังไม่มีคีย์ในหมวดนี้": "No keys in this category",
+  "แสดงล่าสุดไม่เกิน 200 คีย์ในหมวดที่เลือก · เวลาในประเทศไทย": "Latest 200 keys in the selected category · Thailand time",
   "ลบคีย์ฟรี": "Delete Free key",
   "ลบคีย์ฟรีนี้หรือไม่? คีย์เดิมจะใช้ไม่ได้ และต้องทำ Step ใหม่ทั้งหมด": "Delete this Free key? It will stop working and you must complete all steps again.",
   "คุณมีคีย์พรีเมียมที่ใช้งานได้แล้ว ใช้คีย์นี้ได้เลย ไม่สามารถทำ Step รับคีย์ฟรีซ้ำได้": "Your Premium key is active. Use this key; Free key missions are unavailable while Premium is active.",

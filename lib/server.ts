@@ -412,9 +412,13 @@ export async function handle(req: Request, path: string[]): Promise<Response> {
       return json(await adminConfig());
     }
     if (route === "admin/keys" && req.method === "GET") {
-      const rows = await db.select().from(keys).orderBy(desc(keys.createdAt)).limit(200);
+      const source = new URL(req.url).searchParams.get("source") || "all";
+      if (!["all", "admin", "steps", "purchase"].includes(source)) fail(400, "Invalid key category");
+      const filter = source === "all" ? undefined : eq(keys.source, source);
+      const rows = await db.select().from(keys).where(filter).orderBy(desc(keys.createdAt)).limit(200);
       const totals = await db.select({ total: sql<number>`count(*)`, active: sql<number>`sum(case when revoked_at is null and (expires_at is null or expires_at > ${now}) then 1 else 0 end)`, permanent: sql<number>`sum(case when expires_at is null and revoked_at is null then 1 else 0 end)`, revoked: sql<number>`sum(case when revoked_at is not null then 1 else 0 end)` }).from(keys).get();
-      return json({ serverNow: now, keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: await adminConfig() });
+      const category = source === "all" ? totals : await db.select({ total: sql<number>`count(*)` }).from(keys).where(filter).get();
+      return json({ serverNow: now, source, categoryTotal: category?.total || 0, keys: await Promise.all(rows.map(presentKey)), stats: totals, configuration: await adminConfig() });
     }
     if (route === "admin/keys" && req.method === "POST") {
       const input = await body(req); const duration: Duration = { kind: input.kind, amount: input.amount };

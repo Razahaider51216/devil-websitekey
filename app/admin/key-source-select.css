@@ -1,0 +1,6 @@
+.key-source-select{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 18px;padding:14px 16px;border:1px solid #294657;border-radius:7px;background:#0d1922}
+.key-source-select label{font-size:12px;color:#9bdcff;font-weight:600}
+.key-source-select select{flex:1;min-width:0;padding:11px 13px;color:#f0f7ff;background:#152532;border:1px solid #46738e;border-radius:5px;font:inherit;font-size:13px}
+.key-source-select select:focus-visible{outline:2px solid #3fb9ff;outline-offset:2px}
+.key-source-select select:disabled{opacity:.6}
+@media(max-width:480px){.key-source-select{align-items:stretch;flex-direction:column;gap:9px}}

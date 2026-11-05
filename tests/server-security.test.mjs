@@ -71,6 +71,24 @@ class Browser {
   async loginGoogle(){const state=await this.startGoogle();const result=await this.call('auth/google/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),'/');return state;}
 }
 test('server security integration',async t=>{
+  await t.test('admin key categories filter in SQL before the 200 row limit and preserve global totals and authorization',async()=>{
+    await reset();const admin=new Browser(),member=new Browser(),guest=new Browser();await admin.login();await member.login('223456789012345678');
+    const oldId=crypto.randomUUID();
+    await globalThis.__securityDb.insert(schema.keys).values({id:oldId,keyHash:await hash(oldId),label:'Old admin',source:'admin',createdAt:clock-10000,expiresAt:null,durationKind:'permanent',durationAmount:0});
+    const rows=[];for(let i=0;i<205;i++)rows.push({id:crypto.randomUUID(),keyHash:await hash('fixture-key-'+i),label:'Free '+i,source:'steps',createdAt:clock+i,expiresAt:clock+86400000,durationKind:'hours',durationAmount:24});
+    await globalThis.__securityDb.insert(schema.keys).values(rows);
+    const paidId=crypto.randomUUID();await globalThis.__securityDb.insert(schema.keys).values({id:paidId,keyHash:await hash(paidId),label:'Purchased',source:'purchase',createdAt:clock,expiresAt:clock+86400000,durationKind:'days',durationAmount:1});
+    assert.equal((await guest.call('admin/keys?source=admin')).status,401);
+    assert.equal((await member.call('admin/keys?source=admin')).status,403);
+    assert.equal((await admin.call('admin/keys?source=invalid')).status,400);
+    const selected=(await admin.call('admin/keys?source=admin')).data;
+    assert.equal(selected.source,'admin');assert.equal(selected.categoryTotal,1);assert.equal(selected.keys.length,1);assert.equal(selected.keys[0].id,oldId);
+    assert.equal(selected.stats.total,207,'global overview must not change with selected category');
+    const free=(await admin.call('admin/keys?source=steps')).data;assert.equal(free.categoryTotal,205);assert.equal(free.keys.length,200);assert.ok(free.keys.every(k=>k.source==='steps'));
+    const paid=(await admin.call('admin/keys?source=purchase')).data;assert.equal(paid.categoryTotal,1);assert.equal(paid.keys[0].id,paidId);
+    const all=(await admin.call('admin/keys')).data;assert.equal(all.source,'all');assert.equal(all.keys.length,200);assert.equal(all.categoryTotal,207);
+    assert.equal((await client.execute('SELECT count(*) n FROM access_keys')).rows[0].n,207);
+  });
   await t.test('admin mission title translation supports both directions, caches results and preserves explicit languages on save',async()=>{
     await reset();const admin=new Browser(),member=new Browser(),guest=new Browser();await admin.login();await member.login('223456789012345678');
     const old=env.AI;let calls=0;

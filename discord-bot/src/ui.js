@@ -3,7 +3,18 @@ import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Contai
   SeparatorBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { fileURLToPath } from 'node:url';
 
-export const ids = { reset: 'devilhub:hwid:reset', modal: 'devilhub:hwid:submit', info: 'devilhub:key:info' };
+export const ids = { reset: 'devilhub:hwid:reset', modal: 'devilhub:hwid:submit', info: 'devilhub:key:info', role: 'devilhub:premium:role', roleModal: 'devilhub:premium:submit' };
+export function roleModal() {
+  const modal = resetModal().setCustomId(ids.roleModal).setTitle('Get Premium Role');
+  modal.components[0].components[0].setLabel('Purchased / Admin Premium Key');
+  return modal;
+}
+export function roleResult(result, avatar) {
+  const payload = resetResult(result, avatar);
+  payload.embeds[0].setTitle('DEVIL HUB • Get Role');
+  payload.embeds[0].setDescription(`${result.ok ? '<a:emoji_25:1540658596487102464>' : '<:ojic_018:1546638491478265946>'} **${result.ok ? 'Success / สำเร็จ' : 'Failed / ไม่สำเร็จ'}**\n\n${result.message}`);
+  return payload;
+}
 export function resetResult(result, botAvatar) {
   const emoji = result.ok ? '<a:emoji_25:1540658596487102464>' : '<:ojic_018:1546638491478265946>';
   const heading = result.ok ? 'ดำเนินการสำเร็จ / Success' : 'รีเซ็ตไม่สำเร็จ / Failed';
@@ -24,7 +35,9 @@ export function panel(website) {
         .setEmoji({ id: '1565299333794889778', name: 'watergear', animated: false }).setStyle(ButtonStyle.Success),
       new ButtonBuilder().setURL(website).setLabel('Get Key').setEmoji('🔑').setStyle(ButtonStyle.Link),
       new ButtonBuilder().setCustomId(ids.info).setLabel('Info')
-        .setEmoji({ id: '1565299349099909120', name: 'jungwad_', animated: true }).setStyle(ButtonStyle.Secondary)));
+        .setEmoji({ id: '1565299349099909120', name: 'jungwad_', animated: true }).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(ids.role).setLabel('Get Role').setStyle(ButtonStyle.Primary)
+        .setEmoji({ id: '1568243866543329291', name: 'al_rewards_715', animated: false })));
   return { flags: MessageFlags.IsComponentsV2, components: [container],
     files: [new AttachmentBuilder(fileURLToPath(new URL('../assets/devilhub.png', import.meta.url)), { name: 'devilhub.png' })],
     allowedMentions: { parse: [] } };

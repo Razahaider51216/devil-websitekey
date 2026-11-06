@@ -18,7 +18,8 @@ test('panel is Components V2 with top image, exact copy, separator and no accent
   assert.equal(container.components[2].content, '> `Reset HWID` For Key Premium\n> `Get Key` Free to Website');
   assert.equal(container.components[3].divider, true);
   const buttons = container.components[4].components;
-  assert.deepEqual(buttons.map(x => x.label), ['Reset Hwid', 'Get Key', 'Info']);
+  assert.deepEqual(buttons.map(x => x.label), ['Reset Hwid', 'Get Key', 'Info', 'Get Role']);
+  assert.deepEqual(buttons[3].emoji, { id: '1568243866543329291', name: 'al_rewards_715', animated: false });
   assert.equal(buttons[0].style, 3);
   assert.equal(buttons[2].style, 2);
   assert.deepEqual(buttons[0].emoji, { id: '1565299333794889778', name: 'watergear', animated: false });

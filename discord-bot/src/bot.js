@@ -7,6 +7,7 @@ import { resetHwid } from './reset.js';
 import { createVerifier } from './verify.js';
 import { acquireBotLock,createInteractionGate } from './process-guard.js';
 import {createAutoScript} from './auto-script.js';
+import {handlePremiumRole} from './premium-role.js';
 
 const config = readConfig();
 let processLock;
@@ -45,6 +46,10 @@ client.once(Events.ClientReady, async ready => {
     console.error('Bot token does not match DISCORD_APPLICATION_ID'); client.destroy();await processLock.close();process.exitCode = 1; return;
   }
   console.log('DEVIL HUB HWID bot connected');
+  for (const channelId of panels.keys()) {
+    try { await publish(await client.channels.fetch(channelId)); }
+    catch (error) { console.error('Panel refresh failed:', error.code || error.name); }
+  }
   verifier.start();
   try { await register(config); console.log('HWID, verification and auto-script commands ready'); }
   catch (error) { console.error('Command registration failed:', error.code || error.name); }
@@ -58,6 +63,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     if (await verifier.handle(interaction)) return;
     if (await autoScript.handle(interaction)) return;
+    if (await handlePremiumRole(interaction, client, config)) return;
     if (interaction.isChatInputCommand() && interaction.commandName === 'setdevilhub') {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
         await interaction.reply({ content: 'คำสั่งนี้สำหรับผู้ดูแลเซิร์ฟเวอร์เท่านั้น', flags: MessageFlags.Ephemeral }); return;

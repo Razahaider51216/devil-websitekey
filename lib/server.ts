@@ -12,6 +12,7 @@ import { handleScripts } from "./script-storage";
 import { handleRuntime } from "./runtime-storage";
 import { handleFinderTest } from "./finder-test";
 import { resetPremiumHwid, resetSettingId } from "./discord-hwid-reset";
+import { claimPremiumRole } from "./discord-premium-role";
 import { gamesSettingId, initialGames, orderedGames, validateGame, type SupportedGame } from "./supported-games";
 import { gameUsage } from "./game-usage";
 import { handleSupport } from "./support-chat";
@@ -162,6 +163,7 @@ export async function presentKey(row: typeof keys.$inferSelect) {
   return { id: row.id, key: await keyFor(row.id, vars().KEY_SECRET || ""), label: row.label, source: row.source, createdAt: row.createdAt, expiresAt: row.expiresAt, status: status(row, Date.now()), kind: row.durationKind, amount: row.durationAmount };
 }
 export async function handle(req: Request, path: string[]): Promise<Response> {
+  if (path.join("/") === "bot/claim-role") return claimPremiumRole(req, (env as unknown as { DB?: D1Database }).DB, vars().DISCORD_BOT_API_SECRET || "");
   if(path.join("/")==="bot/scripts/generate")return handleLuaGeneration(req);
   if (path[0] === "discord-verify" || path[0] === "bot" && path[1] === "verify") return handleDiscordVerification(req,path.join("/"),rate);
   if (path[0] === "support" || path[0] === "admin" && path[1] === "support") return handleSupport(req,path,rate);

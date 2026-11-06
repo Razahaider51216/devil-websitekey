@@ -187,3 +187,13 @@ premium eligibility, concurrency, duplicate requests and the old-device barrier.
 
 Discord documentation: https://docs.discord.com/developers/components/overview
 and https://discord.js.org/docs/packages/discord.js/14.27.0/ContainerBuilder:Class
+# Premium Get Role
+
+The `/setdevilhub` panel includes **Get Role** with `<:al_rewards_715:1568243866543329291>`.
+Its private modal accepts an active purchased or admin-created key and assigns role `1564302284085796925`.
+The bot needs Manage Roles and a role above that role. Saved panels refresh when the bot starts.
+Free, revoked, expired and other Discord owners' keys are rejected. Each key can claim for one Discord account;
+Google purchases and unassigned admin keys bind to the first claimant. Retrying by that account is safe.
+This operation does not reset HWID or change the key's expiry. It grants a role; it does not automatically
+remove the role later when a key expires. Never enter keys into a public channel.
+The Worker endpoint `/api/bot/claim-role` requires the existing `DISCORD_BOT_API_SECRET` and limits attempts.

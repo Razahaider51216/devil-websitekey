@@ -1,0 +1,23 @@
+{
+  "deployed": true,
+  "worker_version": "c82ff7b2-c878-497d-af56-aea46b126b4a",
+  "url": "https://devil-hub.dev/log",
+  "cron": "* * * * *",
+  "retention": "Clear account history when every Script session is inactive for over one hour",
+  "personal_links_retained": true,
+  "map_artwork_for_all_three_games": true,
+  "tests": {
+    "server_and_domain_passed": 115,
+    "typescript": true,
+    "production_build": true,
+    "browser_viewports": [
+      1440,
+      800,
+      390
+    ],
+    "map_images_loaded": 3,
+    "item_thumbnail_requests": 0,
+    "cached_history_cleared": true
+  },
+  "live_gameplay_verified": false
+}

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Copy, Check, RefreshCw, Link2, PackageOpen, Radio, ImageOff } from "lucide-react";
+import { Activity, Copy, Check, RefreshCw, Link2, PackageOpen, Radio } from "lucide-react";
 import Link from "next/link";
 import { Header, Footer, api } from "../components";
 import { useLanguage } from "../language";
@@ -8,10 +8,8 @@ import { formatLogAmount, logGames, type LogGame, type LogItem } from "../../lib
 import "./log.css";
 type Session = {id:string;game:LogGame;player:string;balance:string|null;lastSeenAt:number;online:boolean};
 type Entry = {id:number;sessionId:string;game:LogGame;player:string;item:LogItem;balance:string|null;createdAt:number};
-function ItemImage({item}:{item:LogItem}) {
-  const [failed,setFailed]=useState(false);
-  const src=item.imageUrl || (item.assetId?`/api/log/image?asset=${encodeURIComponent(item.assetId)}`:null);
-  return <div className="log-item-image">{src&&!failed?<img src={src} alt={item.name} loading="lazy" referrerPolicy="no-referrer" onError={()=>setFailed(true)}/>:<ImageOff size={26} aria-label="Image unavailable"/>}</div>;
+function ItemImage({game}:{game:LogGame}) {
+  return <div className="log-item-image"><img src={logGames[game].image} alt={logGames[game].name} loading="lazy"/></div>;
 }
 export default function LogPage() {
   const {language}=useLanguage(), th=language==="th";
@@ -25,7 +23,8 @@ export default function LogPage() {
       const data=await api("log?after="+cursor.current);
       if(!alive.current)return;
       setClock(Date.now());setSessions(data.sessions);setEntries(old=>{
-        const values=new Map(old.map(x=>[x.id,x]));for(const x of data.events)values.set(x.id,x);
+        const retained=typeof data.historyStartedAt==="number"?old.filter(x=>x.createdAt>=data.historyStartedAt):data.historyStartedAt===null?[]:old;
+        const values=new Map(retained.map(x=>[x.id,x]));for(const x of data.events)values.set(x.id,x);
         return [...values.values()].sort((a,b)=>b.id-a.id).slice(0,500);
       });cursor.current=data.cursor;setError("");retryAt.current=0;
     }catch(e){if(alive.current){setError((e as Error).message);retryAt.current=Date.now()+15000;}}
@@ -52,7 +51,7 @@ export default function LogPage() {
     {error&&<div role="alert" className="notice error">{error} <Link href="/">{th?"กลับหน้าล็อกอิน":"Go to sign in"}</Link></div>}
     <section className="log-sessions" aria-label="Connected games">{sessions.length?sessions.map(s=><article key={s.id} className="log-session"><img src={logGames[s.game].image} alt=""/><div><h3>{logGames[s.game].name}</h3><p>{s.player}</p><strong>{logGames[s.game].currency} · {formatLogAmount(s.balance)}</strong></div><span className={clock-s.lastSeenAt<45000?"log-online":"log-offline"}>{clock-s.lastSeenAt<45000?(th?"เชื่อมต่อแล้ว":"Connected"):(th?"ออฟไลน์":"Offline")}</span></article>):<div className="log-wait"><Activity size={22}/><div><strong>{th?"รอการเชื่อมต่อจาก Script":"Waiting for your script"}</strong><p>{th?"ชื่อและรูปแมพจะปรากฏเมื่อเปิด LOG ในเกม":"The game name and artwork appear as soon as LOG connects."}</p></div></div>}</section>
     <div className="log-toolbar"><div><h2>DROP FEED</h2><span>{active.length} {th?"เซสชันออนไลน์":"sessions online"}</span></div><select aria-label={th?"เลือกแมพ":"Filter game"} value={filter} onChange={e=>setFilter(e.target.value as LogGame|"all")}><option value="all">{th?"ทุกแมพ":"All games"}</option>{Object.entries(logGames).map(([k,g])=><option value={k} key={k}>{g.name}</option>)}</select></div>
-    <div className="log-feed" aria-live="polite" aria-relevant="additions">{visible.length?visible.map(e=><article key={e.id} className="log-entry"><ItemImage item={e.item}/><div className="log-item-body"><div className="log-item-title"><h3>{e.item.name}</h3><span>×{e.item.amount}</span></div><div className="log-badges">{e.item.rarity&&<span className="log-rarity">{e.item.rarity}</span>}{e.item.level!==null&&<span>Lv. {e.item.level}</span>}{e.item.statuses.map(s=><span key={s}>{s}</span>)}</div><p>{logGames[e.game].name} <span>· {e.player}</span></p></div><div className="log-entry-meta">{e.item.income!==null&&<strong>+{formatLogAmount(e.item.income)}/s</strong>}<span>{logGames[e.game].currency} {formatLogAmount(e.balance)}</span><time dateTime={new Date(e.createdAt).toISOString()}>{new Intl.DateTimeFormat(language==="th"?"th-TH":"en-GB",{dateStyle:"short",timeStyle:"medium"}).format(e.createdAt)}</time></div></article>):<div className="log-empty"><PackageOpen size={38}/><h3>{loading?(th?"กำลังโหลด LOG":"Loading LOG"):(th?"ยังไม่มีของที่ได้รับ":"No new drops yet")}</h3><p>{th?"เปิด LOG ใน Script แล้วเริ่มเล่น ของที่ได้รับใหม่จะแสดงที่นี่":"Enable LOG in your script and start playing. New drops will show up here."}</p></div>}</div>
-    <p className="log-retention">{th?"แสดงล่าสุด 500 รายการ • เก็บประวัติสูงสุด 1,000 รายการต่อบัญชี":"Showing the latest 500 entries · Up to 1,000 entries retained per account"}</p>
+    <div className="log-feed" aria-live="polite" aria-relevant="additions">{visible.length?visible.map(e=><article key={e.id} className="log-entry"><ItemImage game={e.game}/><div className="log-item-body"><div className="log-item-title"><h3>{e.item.name}</h3><span>×{e.item.amount}</span></div><div className="log-badges">{e.item.rarity&&<span className="log-rarity">{e.item.rarity}</span>}{e.item.level!==null&&<span>Lv. {e.item.level}</span>}{e.item.statuses.map(s=><span key={s}>{s}</span>)}</div><p>{logGames[e.game].name} <span>· {e.player}</span></p></div><div className="log-entry-meta">{e.item.income!==null&&<strong>+{formatLogAmount(e.item.income)}/s</strong>}<span>{logGames[e.game].currency} {formatLogAmount(e.balance)}</span><time dateTime={new Date(e.createdAt).toISOString()}>{new Intl.DateTimeFormat(language==="th"?"th-TH":"en-GB",{dateStyle:"short",timeStyle:"medium"}).format(e.createdAt)}</time></div></article>):<div className="log-empty"><PackageOpen size={38}/><h3>{loading?(th?"กำลังโหลด LOG":"Loading LOG"):(th?"ยังไม่มีของที่ได้รับ":"No new drops yet")}</h3><p>{th?"เปิด LOG ใน Script แล้วเริ่มเล่น ของที่ได้รับใหม่จะแสดงที่นี่":"Enable LOG in your script and start playing. New drops will show up here."}</p></div>}</div>
+    <p className="log-retention">{th?"แสดงล่าสุด 500 รายการ • ล้างประวัติทั้งหมดเมื่อ Script ทุกแมพออฟไลน์เกิน 1 ชั่วโมง • ตั้งค่าตัวกรองเงินและระดับได้ในเมนู LOG ของ Script":"Showing the latest 500 entries · History clears after all script sessions are offline for over 1 hour · Set money and rarity filters in your script's LOG menu"}</p>
   </main><Footer/></>;
 }

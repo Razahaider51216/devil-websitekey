@@ -7,6 +7,7 @@ import { googleUser } from "./google-auth";
 import { hash, keyFor } from "./domain";
 import { readJson, requireOrigin, RequestError } from "./security";
 import { imageAsset, logGames, logImageURL, parseLog } from "./script-log-domain";
+import { clearExpiredScriptLogs } from "./script-log-retention";
 type Rate = (req: Request, name: string, max: number) => Promise<void>;
 const reply = (value: unknown, status = 200) => Response.json(value, {status, headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
 function fail(status: number, message: string): never { throw new RequestError(status,message); }
@@ -28,6 +29,7 @@ export async function handleScriptLogs(req: Request, path: string[], rate: Rate)
     if (!link || link.tokenHash!==await hash(given)) fail(403,"LOG link expired. Copy the current link from your account.");
     let input: ReturnType<typeof parseLog>;
     try {input=parseLog(await readJson(req,48_000));} catch(e) { if(e instanceof RequestError)throw e;fail(400,(e as Error).message); }
+    await clearExpiredScriptLogs(link.ownerId, now);
     const sessionId=await hash(link.ownerId+":"+input.sessionId);
     const prior=await db.select({game:sessions.game}).from(sessions).where(eq(sessions.id,sessionId)).get();
     if (prior && prior.game!==input.game) fail(409,"Start a new LOG session when changing games");
@@ -64,15 +66,18 @@ export async function handleScriptLogs(req: Request, path: string[], rate: Rate)
     return new Response(null,{status:302,headers:{Location:image,"Cache-Control":"private, max-age=3600","Referrer-Policy":"no-referrer"}});
   }
   if(route==="log" && req.method==="GET") {
+    await clearExpiredScriptLogs(ownerId, now);
     const after=Number(url.searchParams.get("after")||0);
     if(!Number.isSafeInteger(after)||after<0)fail(400,"Invalid log cursor");
     const rows=await db.select().from(events).where(and(eq(events.ownerId,ownerId),after?gt(events.id,after):undefined))
       .orderBy(after?asc(events.id):desc(events.id)).limit(101);
     const selected=rows.slice(0,100), list=after?selected:selected.reverse();
     const active=await db.select().from(sessions).where(eq(sessions.ownerId,ownerId)).orderBy(desc(sessions.lastSeenAt)).limit(30);
+    const history=await db.select({startedAt:sql<number | null>`min(${sessions.startedAt})`}).from(sessions).where(eq(sessions.ownerId,ownerId)).get();
     return reply({events:list.map(row=>({...row,item:JSON.parse(row.item),ownerId:undefined,eventId:undefined})),
       sessions:active.map(row=>({id:row.id,game:row.game,player:row.player,balance:row.balance,startedAt:row.startedAt,lastSeenAt:row.lastSeenAt,online:now-row.lastSeenAt<45000})),
-      cursor:list.length?list[list.length-1].id:after,hasMore:after>0&&rows.length>100,games:logGames,serverNow:now});
+      cursor:list.length?list[list.length-1].id:after,hasMore:after>0&&rows.length>100,games:logGames,serverNow:now,
+      historyStartedAt:history?.startedAt ?? null});
   }
   fail(404,"LOG endpoint not found");
 }

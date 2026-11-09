@@ -174,6 +174,34 @@ test('server security integration',async t=>{
     assert.equal((await script.call(path,'POST',body)).status,403);assert.equal((await script.call(rotated.split('/api/')[1],'POST',body)).status,200);
     assert.equal((await a.call('log')).data.events.length,1);
   });
+  await t.test('LOG clears an inactive account after one hour, keeps active accounts and retains personal links',async()=>{
+    await reset();const a=new Browser(),b=new Browser(),script=new Browser();
+    await a.login('223456789012345678');await b.login('323456789012345678');
+    const linkA=(await a.call('log/link','POST',{})).data.url,linkB=(await b.call('log/link','POST',{})).data.url;
+    const pathA=linkA.split('/api/')[1],pathB=linkB.split('/api/')[1];
+    const body={game:'break',sessionId:'retention-session-a',player:'Tester',balance:'1e40',events:[{id:'retention-event-a',name:'Lion',rarity:'Omega',income:'1e12'}]};
+    await script.call(pathA,'POST',body);await script.call(pathB,'POST',body);
+    const first=(await a.call('log')).data;assert.equal(first.events.length,1);assert.equal(first.historyStartedAt,clock);
+    clock+=3_600_000;
+    assert.equal((await a.call('log')).data.events.length,1,'exactly one hour is retained');
+    await script.call(pathB,'POST',{...body,game:'throw',sessionId:'retention-other-game',events:[]});
+    clock+=1;
+    const {clearExpiredScriptLogs}=await import('../lib/script-log-retention.ts');
+    await clearExpiredScriptLogs();
+    assert.equal((await client.execute("SELECT count(*) n FROM script_log_events WHERE owner_id='discord:223456789012345678'")).rows[0].n,0);
+    assert.equal((await client.execute("SELECT count(*) n FROM script_log_sessions WHERE owner_id='discord:223456789012345678'")).rows[0].n,0);
+    assert.equal((await b.call('log')).data.events.length,1,'an active session in another map keeps all this account history');
+    const cleared=(await a.call('log?after='+first.cursor)).data;
+    assert.equal(cleared.events.length,0);assert.equal(cleared.historyStartedAt,null);
+    assert.equal((await a.call('log/link','POST',{})).data.url,linkA,'cleanup must not rotate the personal URL');
+    await script.call(pathA,'POST',{...body,events:[{...body.events[0],id:'retention-new-drop'}]});
+    const reconnected=(await a.call('log')).data;assert.equal(reconnected.events.length,1);assert.ok(reconnected.historyStartedAt>first.historyStartedAt);
+    clock+=3_600_001;
+    // A reconnect before the next cron also clears old history before renewing lastSeen.
+    await script.call(pathA,'POST',{...body,events:[{...body.events[0],id:'retention-after-idle'}]});
+    const renewed=(await a.call('log')).data;assert.equal(renewed.events.length,1);assert.equal(renewed.events[0].item.id,'retention-after-idle');
+    assert.equal((await b.call('log')).data.events.length,0,'read access does not keep the script session alive');
+  });
   await t.test('private support chat isolates users, validates attachments, deduplicates retries and restricts admin replies',async()=>{
     await reset();const a=new Browser(),b=new Browser(),operator=new Browser(),guest=new Browser();
     await a.login('223456789012345678');await b.login('323456789012345678');await operator.login();

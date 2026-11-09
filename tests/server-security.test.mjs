@@ -152,6 +152,28 @@ test('server security integration',async t=>{
       const result=await b.call('auth/discord/callback?state='+state+'&code=code');assert.equal(result.headers.get('location'),expected);
     }
   });
+  await t.test('website LOG isolates account feeds, uses write-only links, deduplicates retries and rotates links',async()=>{
+    await reset();const a=new Browser(),b=new Browser(),script=new Browser();
+    assert.equal((await script.call('log')).status,401);
+    await a.login('223456789012345678');await b.login('323456789012345678');
+    const linkA=(await a.call('log/link','POST',{})).data.url,linkB=(await b.call('log/link','POST',{})).data.url;
+    assert.notEqual(linkA,linkB);assert.equal((await a.call('log/link','POST',{})).data.url,linkA);
+    assert.equal((await a.call('log/link','POST',{}, {origin:'https://evil.test'})).status,403);
+    const path=linkA.split('/api/')[1],body={game:'anime',sessionId:'fixture-session-01',player:'Tester',balance:'1.25e+46',events:[]};
+    assert.equal((await script.call(path,'POST',body)).status,200);
+    let view=(await a.call('log')).data;assert.equal(view.sessions.length,1);assert.equal(view.sessions[0].online,true);assert.equal(view.sessions[0].game,'anime');assert.equal(view.events.length,0);
+    assert.equal((await b.call('log')).data.sessions.length,0);
+    body.events=[{id:'reward-00001',name:'Character',rarity:'Secret',level:99,statuses:['Gold','Lucky'],amount:2,assetId:'12345',income:'1.5e12'}];
+    assert.equal((await script.call(path,'POST',body)).status,200);assert.equal((await script.call(path,'POST',body)).status,200);
+    view=(await a.call('log')).data;assert.equal(view.events.length,1);assert.equal(view.events[0].item.assetId,'12345');assert.equal(view.events[0].balance,'1.25e+46');assert.equal(view.events[0].item.amount,2);
+    assert.equal(view.events[0].ownerId,undefined);assert.equal((await b.call('log')).data.events.length,0);
+    assert.equal((await a.call('log?after='+view.cursor)).data.events.length,0);
+    assert.equal((await script.call(path,'POST',{...body,game:'throw'})).status,409);
+    clock+=46000;assert.equal((await a.call('log')).data.sessions[0].online,false);
+    const rotated=(await a.call('log/link','POST',{rotate:true})).data.url;assert.notEqual(rotated,linkA);
+    assert.equal((await script.call(path,'POST',body)).status,403);assert.equal((await script.call(rotated.split('/api/')[1],'POST',body)).status,200);
+    assert.equal((await a.call('log')).data.events.length,1);
+  });
   await t.test('private support chat isolates users, validates attachments, deduplicates retries and restricts admin replies',async()=>{
     await reset();const a=new Browser(),b=new Browser(),operator=new Browser(),guest=new Browser();
     await a.login('223456789012345678');await b.login('323456789012345678');await operator.login();

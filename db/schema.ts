@@ -1,4 +1,17 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+export const scriptLogLinks = sqliteTable("script_log_links", {
+  ownerId: text("owner_id").primaryKey(), linkId: text("link_id").notNull().unique(),
+  tokenHash: text("token_hash").notNull(), createdAt: integer("created_at").notNull(),
+});
+export const scriptLogSessions = sqliteTable("script_log_sessions", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull(), game: text("game").notNull(),
+  player: text("player").notNull(), balance: text("balance"), startedAt: integer("started_at").notNull(), lastSeenAt: integer("last_seen_at").notNull(),
+}, t => [index("script_log_sessions_owner_seen").on(t.ownerId,t.lastSeenAt)]);
+export const scriptLogEvents = sqliteTable("script_log_events", {
+  id: integer("id").primaryKey({autoIncrement:true}), ownerId: text("owner_id").notNull(), eventId: text("event_id").notNull(),
+  sessionId: text("session_id").notNull(), game: text("game").notNull(), player: text("player").notNull(),
+  item: text("item").notNull(), balance: text("balance"), createdAt: integer("created_at").notNull(),
+}, t => [uniqueIndex("script_log_events_retry").on(t.ownerId,t.eventId),index("script_log_events_owner_cursor").on(t.ownerId,t.id)]);
 export const flows = sqliteTable("flows", {
   id: text("id").primaryKey(), createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(),
   plan: text("plan"),

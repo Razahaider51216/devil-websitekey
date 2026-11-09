@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-09",
+  "worker": "devil-websitekey",
+  "worker_version": "1249a41a-dd6e-47f2-8059-3c825427c343",
+  "deployed": true,
+  "page": "https://devil-hub.dev/log",
+  "migration": "0012_script_logs.sql",
+  "runtime_release": "runtime-website-log-20261109-1",
+  "supported_games": [
+    "Break and Steal an Egg",
+    "Anime Dice",
+    "Throw Food For Animals"
+  ],
+  "refresh_seconds": 2,
+  "heartbeat_seconds": 15,
+  "retained_events_per_account": 1000,
+  "validation": {
+    "node_tests_passed": 114,
+    "typescript": true,
+    "changed_code_lint_errors": 0,
+    "production_build": true,
+    "browser_widths": [
+      1440,
+      800,
+      390
+    ],
+    "owner_isolation_rotation_idempotency": true,
+    "live_page_http": 200,
+    "anonymous_read_http": 401,
+    "invalid_ingest_http": 403,
+    "native_roblox_thumbnail_http": 200,
+    "live_gameplay_verified": false
+  },
+  "foreign_access_diagnostics": {
+    "android_chrome_home_http": 200,
+    "worker_errors_last_24h": 0,
+    "live_tail_seconds": 25,
+    "live_tail_requests": 195,
+    "live_tail_exceptions": 0,
+    "zone_country_analytics_permission": false,
+    "waf_settings_permission": false,
+    "geographic_failure_reproduced": false,
+    "country_or_waf_rules_changed": false
+  }
+}
